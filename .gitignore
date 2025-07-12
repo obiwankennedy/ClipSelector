@@ -1,0 +1,5 @@
+build/*
+build
+*.txt.user
+.cache/*
+.vscode/*

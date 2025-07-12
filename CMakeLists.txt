@@ -15,6 +15,13 @@ qt_add_executable(clipSelector
     utils.h utils.cpp
 )
 
+add_library(audiorw SHARED IMPORTED) # or STATIC instead of SHARED
+set_target_properties(audiorw PROPERTIES
+  IMPORTED_LOCATION "/usr/lib/libaudiorw.so"
+  INTERFACE_INCLUDE_DIRECTORIES "/usr/include"
+)
+
+
 qt_add_qml_module(clipSelector
     URI Views
     VERSION 1.0
@@ -28,6 +35,7 @@ qt_add_qml_module(clipSelector
         QML_FILES MusicSelector.qml
         SOURCES filteredmodel.h filteredmodel.cpp
         QML_FILES OffsetSelector.qml
+        SOURCES audiospect.h audiospect.cpp
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
@@ -42,7 +50,7 @@ set_target_properties(clipSelector PROPERTIES
 )
 
 target_link_libraries(clipSelector
-    PRIVATE Qt6::Quick Qt6::Multimedia PkgConfig::TAGLIB
+    PRIVATE Qt6::Quick Qt6::Multimedia PkgConfig::TAGLIB audiorw
 )
 
 include(GNUInstallDirs)

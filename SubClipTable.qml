@@ -6,15 +6,25 @@ import Qt.labs.qmlmodels
 TableView {
     id: _root
 
+    property alias video: offsetSelector.video
+
     model: MainController.clipModel
     resizableColumns: true
     alternatingRows: true
     columnSpacing: 3
-    rowSpacing: 3
+    rowSpacing: 6
+
 
 
     MusicSelector {
         id: musicSelector
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+    }
+
+    OffsetSelector {
+        id: offsetSelector
         parent: Overlay.overlay
         anchors.centerIn: parent
         modal: true
@@ -31,48 +41,69 @@ TableView {
         role: "type"
         DelegateChoice {
             column: 0
-            Text {
-                text: begin
-                TableView.editDelegate: TextField {
-                    anchors.fill: parent
-                    text: begin
-                    horizontalAlignment: TextInput.AlignHCenter
-                    verticalAlignment: TextInput.AlignVCenter
-                    Component.onCompleted: selectAll()
+            ColumnLayout {
+                id: lyt
+                implicitHeight: repeater.count * 20
+                Repeater {
+                    id: repeater
+                    model: ranges
+                    onCountChanged: _root.forceLayout()
+                    RowLayout {
+                        Layout.fillWidth: true
+                        TextField {
+                            text: begin
+                            onTextEdited: {
+                                begin = text
+                            }
+                           /* TableView.editDelegate: TextField {
+                                anchors.fill: parent
+                                text: begin
+                                horizontalAlignment: TextInput.AlignHCenter
+                                verticalAlignment: TextInput.AlignVCenter
+                                Component.onCompleted: selectAll()
 
-                    TableView.onCommit: {
-                        begin = text
+                                TableView.onCommit: {
+                                    begin = text
+                                }
+                            }*/
+                        }
+                        TextField {
+                            text: end
+                            onTextEdited: {
+                                end = text
+                            }
+
+                            /*TableView.editDelegate: TextField {
+                                anchors.fill: parent
+                                text: end
+                                horizontalAlignment: TextInput.AlignHCenter
+                                verticalAlignment: TextInput.AlignVCenter
+                                Component.onCompleted: selectAll()
+
+                                TableView.onCommit: {
+                                    modelData.begin = text
+                                }
+                            }*/
+                        }
                     }
+
                 }
             }
         }
         DelegateChoice {
             column: 1
             Text {
-                text: end
-                TableView.editDelegate: TextField {
-                    anchors.fill: parent
-                    text: end
-                    horizontalAlignment: TextInput.AlignHCenter
-                    verticalAlignment: TextInput.AlignVCenter
-                    Component.onCompleted: selectAll()
-
-                    TableView.onCommit: {
-                        end = text
-                    }
-                }
+                text: "%1s".arg(duration)
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
             }
         }
         DelegateChoice {
             column: 2
             Text {
-                text: "%1s".arg((end-begin)/1000)
-            }
-        }
-        DelegateChoice {
-            column: 3
-            Text {
                 text: label
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
                 TableView.editDelegate: TextField {
                     anchors.fill: parent
                     text: label
@@ -87,29 +118,26 @@ TableView {
             }
         }
         DelegateChoice {
-            column: 4
+            column: 3
             Button {
                 text: music ? music : "music"
                 onClicked: {
+                    //music = "/media/renaud/musique/bangles/emule/Bangles - Walk Like An Egyptian.mp3"
                     musicSelector.indexClip = row
                     musicSelector.open()
                 }
             }
         }
         DelegateChoice {
-            column: 5
-            Text {
-                text: offset
-                TableView.editDelegate: TextField {
-                    anchors.fill: parent
-                    text: offset
-                    horizontalAlignment: TextInput.AlignHCenter
-                    verticalAlignment: TextInput.AlignVCenter
-                    Component.onCompleted: selectAll()
+            column: 4
 
-                    TableView.onCommit: {
-                        offset = text
-                    }
+            Button {
+                text: offset ? offset : "offset"
+                onClicked: {
+                    offsetSelector.model = ranges
+                    offsetSelector.indexClip = row
+                    offsetSelector.song = music
+                    offsetSelector.open()
                 }
             }
         }
@@ -121,10 +149,4 @@ TableView {
         color: "green"
         opacity: 0.2
     }
-
-    /*Timer {
-        running: true
-        repeat: true
-        onTriggered: console.log("Tableview:",_root.x," w:",_root.width," h:",_root.height)
-    }*/
 }

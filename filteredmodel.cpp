@@ -19,6 +19,9 @@ bool FilteredModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourcePar
     return title.contains(m_search, Qt::CaseInsensitive) || artist.contains(m_search, Qt::CaseInsensitive);
 }
 
+
+
+
 void FilteredModel::setSearch(const QString& search)
 {
     m_search= search;

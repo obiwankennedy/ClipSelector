@@ -17,11 +17,26 @@ ApplicationWindow {
         onAccepted: MainController.fileName = open.currentFile
     }
 
+    Timer {
+        id: timer
+        repeat: true
+        interval: 1000*60*10//10mins
+        onTriggered: MainController.saveModel(save.currentFile)
+    }
+
+
     FileDialog {
         id: save
         currentFolder: open.currentFolder
         fileMode: FileDialog.SaveFile
-        onAccepted: MainController.saveModel(save.currentFile)
+        onAccepted: {
+            MainController.saveModel(save.currentFile)
+            timer.start()
+        }
+    }
+
+    Component.onCompleted: {
+        MainController.fileName = "file:///media/renaud/share/2024-01-27_15-17-07.mkv"
     }
 
     menuBar: MenuBar {
@@ -29,11 +44,20 @@ ApplicationWindow {
             title: qsTr("File")
             Action {
                 text: qsTr("Open")
-                onTriggered: open.open() //MainController.fileName = "file:///media/renaud/other/document/dcs/2024-05-24_03-36-01.mp4"
-                //
+                onTriggered:open.open() // MainController.fileName = "file:///media/renaud/other/document/dcs/2024-06-18_17-41-45.mkv"
+                // //
             }
             Action {
                 text: qsTr("Save")
+                onTriggered: {
+                    if(MainController.fileName)
+                        MainController.saveModel(MainController.fileName)
+                    else
+                        save.open()
+                }
+            }
+            Action {
+                text: qsTr("Save As")
                 onTriggered: save.open()
             }
             MenuSeparator{

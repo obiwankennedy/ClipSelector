@@ -1,8 +1,8 @@
 #ifndef FILTEREDMODEL_H
 #define FILTEREDMODEL_H
 
-#include <QSortFilterProxyModel>
 #include <QQmlEngine>
+#include <QSortFilterProxyModel>
 
 class FilteredModel : public QSortFilterProxyModel
 {
@@ -17,6 +17,8 @@ public:
 
 private:
     QString m_search;
+
+    // aunaur
 };
 
 #endif // FILTEREDMODEL_H

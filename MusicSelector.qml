@@ -11,6 +11,7 @@ Dialog {
     property string selectedSong
     property int indexClip
 
+
     ColumnLayout {
         anchors.fill: parent
 

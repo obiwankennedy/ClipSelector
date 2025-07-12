@@ -1,33 +1,76 @@
 #include "utils.h"
 
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonObject>
-#include <QFile>
 
 namespace Utils
 {
 QByteArray model2Json(const QString& file, const ClipModel* model)
 {
 
-    auto data = model->allData();
+    auto data= model->allData();
     QJsonObject root;
-    root["video"]=file;
+    root["video"]= file;
     QJsonArray infoArray;
 
     for(auto const& info : data)
     {
         QJsonObject obj;
-        obj["begin"]=static_cast<qint64>(info.begin);
-        obj["end"]=static_cast<qint64>(info.end);
-        obj["label"]=info.label;
-        obj["music"]=info.music;
-        obj["offset"]=static_cast<qint64>(info.offset);
+        QJsonArray rangesArray;
+        auto list= info.ranges->ranges();
+        for(auto const& range : list)
+        {
+            QJsonObject rangeJson;
+            rangeJson["begin"]= static_cast<qint64>(range.begin);
+            rangeJson["end"]= static_cast<qint64>(range.end);
+
+            rangesArray.append(rangeJson);
+        }
+        obj["ranges"]= rangesArray;
+        obj["label"]= info.label;
+        obj["music"]= info.music;
+        obj["color"]= info.color.name();
+        obj["offset"]= static_cast<qint64>(info.offset);
         infoArray.append(obj);
     }
-    root["clips"]=infoArray;
+    root["clips"]= infoArray;
     QJsonDocument doc;
     doc.setObject(root);
     return doc.toJson();
+}
+
+void readJson(const QString& file, MainController* ctrl)
+{
+    QFile filejson(file);
+
+    if(!filejson.open(QIODevice::ReadOnly))
+        qDebug() << "error";
+
+    auto byte= filejson.readAll();
+
+    QJsonDocument doc= QJsonDocument::fromJson(byte);
+    auto obj= doc.object();
+
+    ctrl->setFileName(obj["video"].toString());
+
+    auto clips= obj["clips"].toArray();
+    auto model= ctrl->clipModel();
+
+    for(auto const& clipref : clips)
+    {
+        auto clip= clipref.toObject();
+        auto array= clip["ranges"].toArray();
+        auto ranges= new RangeModel;
+        for(auto obj : array)
+        {
+            auto json= obj.toObject();
+            ranges->addRange(static_cast<quint64>(json["begin"].toInteger()),
+                             static_cast<quint64>(json["end"].toInteger()));
+        }
+        model->insertClip(ClipInfo{clip["label"].toString(), ranges, QColor::fromString(clip["color"].toString()),
+                                   clip["music"].toString(), clip["offset"].toInteger()});
+    }
 }
 
 void readAudioList(const QString& filename, AudioFileModel* model)
@@ -65,4 +108,4 @@ void readAudioList(const QString& filename, AudioFileModel* model)
 
     model->appendSongs(vec);
 }
-}
+} // namespace Utils
