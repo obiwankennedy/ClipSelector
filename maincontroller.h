@@ -34,10 +34,12 @@ public:
 
 public slots:
     void reset();
+    void openJson(const QString &uri);
     void saveModel(const QString& uri) const;
     void playScenes();
     void setPattern(const QString& pattern);
     void setMusic(int idx, const QString& song);
+    void setMusicOffset(int idx, int offset);
 
 signals:
     void fileNameChanged();

@@ -19,14 +19,11 @@ Item {
         onMediaStatusChanged: console.log("status:",player.mediaStatus)
 
         videoOutput: video
-        onPositionChanged: MainController.position = player.position
+        onPositionChanged: {
+            if(playClip.checked)
+                MainController.position = player.position
+        }
     }
-
-    /*Timer {
-        running: true
-        repeat: true
-        onTriggered: console.log("video:",video.height," ",layout.implicitHeight," ",layout.height)
-    }*/
 
     ColumnLayout {
         id: lyt
@@ -56,8 +53,18 @@ Item {
                 onClicked: MainController.clipModel.insertClip(player.position,player.position+30000)
             }
             ToolButton {
+                icon.name: "list-add"
+                onClicked: MainController.clipModel.rangeIntoCurrentClip(player.position,player.position+30000)
+            }
+            ToolButton {
+
+                id: playClip
                 icon.name: "media-playback-start"
+                checkable: true
                 onClicked: MainController.playScenes()
+            }
+            Label {
+                text: qsTr("Time: %1ms").arg(player.position)
             }
         }
         Connections {
@@ -101,20 +108,21 @@ Item {
                     Repeater {
                         id: rep
                         model: MainController.clipModel
-                        delegate: Rectangle {
-                            id: range
-                            required property real begin
-                            required property real end
-                            /* Timer {
-                               running: true
-                               repeat: true
-                               onTriggered: console.log("x:",range.x," w:",range.width," w:",clipLine.width," second",clipLine.secondInPixel)
-                            }*/
-                            color: "red"
+                        Repeater {
+                            required property QtObject ranges
+                            required property color clipColor
+                            model: ranges
+                            delegate: Rectangle {
+                                id: range
+                                required property real begin
+                                required property real end
 
-                            height: 20
-                            x: (begin/1000)*clipLine.secondInPixel
-                            width: ((end-begin)/1000)*clipLine.secondInPixel
+                                color: clipColor
+
+                                height: 20
+                                x: (begin/1000)*clipLine.secondInPixel
+                                width: ((end-begin)/1000)*clipLine.secondInPixel
+                            }
                         }
                     }
 
@@ -128,6 +136,7 @@ Item {
             }
             SubClipTable {
                 id: tableView
+                video: MainController.fileName
                 implicitHeight: 100
             }
 
