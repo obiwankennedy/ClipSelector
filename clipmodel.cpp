@@ -1,6 +1,7 @@
 #include "clipmodel.h"
 
 #include <chrono>
+#include <numeric>
 #include <random>
 
 QColor generateColor()
@@ -11,6 +12,17 @@ QColor generateColor()
     return QColor(redAndBlueDist(mt), greenDist(mt), redAndBlueDist(mt));
 }
 
+/*int computeDuration(const RangeInfo& info)
+{
+    return (info.end - info.begin) / 1000;
+}
+
+int cumulateDuration(const std::vector<RangeInfo>& ranges)
+{
+    return std::accumulate(std::begin(ranges), std::end(ranges), 0,
+                           [](int a, const RangeInfo& b) { return a + computeDuration(b); });
+}*/
+
 ClipModel::ClipModel() {}
 
 QVariant ClipModel::data(const QModelIndex& index, int role) const
@@ -18,102 +30,147 @@ QVariant ClipModel::data(const QModelIndex& index, int role) const
     if(!index.isValid())
         return {};
 
-    auto& clip= m_data[index.row()];
+    static QSet<int> allowed{Qt::DisplayRole, Duration, Color, Music, Offset, Name, Label, RangeModelRole};
 
-    auto c= index.column();
+    if(!allowed.contains(role))
+        return {};
 
-    auto vrole= Label + c;
+    auto id= static_cast<int>(index.internalId()) - 1;
 
-    if(role < Label)
-    {
-        role= vrole;
-        qDebug() << "vrole different than role" << vrole << role;
-    }
+    int row= index.row();
+    auto clip= m_data[row].get();
 
     QVariant res;
     switch(role)
     {
     case Label:
-        res= clip.label;
+        res= clip->label();
         break;
-    case Ranges:
-        res= QVariant::fromValue(clip.ranges);
+    case Name:
+        res= clip->name();
+        break;
+    case RangeModelRole:
+        res= QVariant::fromValue(clip->ranges());
         break;
     case Duration:
-        res= clip.ranges->duration();
+        res= clip->duration();
         break;
     case Music:
-        qDebug() << clip.music;
-        res= clip.music;
+        res= clip->music();
         break;
     case Color:
-        res= clip.color;
+        res= clip->color();
         break;
     case Offset:
-        res= clip.offset;
+        res= clip->offset();
         break;
     }
+    // qDebug() << "data index:" << index << role << res;
     return res;
 }
 
 Qt::ItemFlags ClipModel::flags(const QModelIndex& index) const
 {
-    Q_UNUSED(index)
+    if(!index.isValid())
+        return Qt::NoItemFlags;
     return Qt::ItemIsEditable | Qt::ItemIsEnabled | Qt::ItemIsSelectable;
 }
 
 bool ClipModel::setData(const QModelIndex& index, const QVariant& value, int role)
 {
+    qDebug() << "setData clipmode" << index << value << role;
     if(!index.isValid())
         return false;
 
-    auto& clip= m_data[index.row()];
+    auto id= static_cast<int>(index.internalId()) - 1;
+
+    int row= index.row();
+
+    auto clip= m_data[row].get();
+    // auto ranges= clip->ranges();
 
     switch(role)
     {
     case Label:
-        clip.label= value.toString();
+        clip->setLabel(value.toString());
         break;
-    case Ranges:
-        clip.ranges= value.value<RangeModel*>();
+    case Name:
+        clip->setName(value.toString());
         break;
     case Music:
-        clip.music= value.toString();
+        clip->setMusic(value.toString());
+        break;
+    case Color:
+        clip->setColor(value.toString());
         break;
     case Offset:
-        clip.offset= value.toLongLong();
+        clip->setOffset(value.toLongLong());
         break;
     case Duration:
         break;
     }
-    qDebug() << "datachanged" << index << index.siblingAtColumn(columnCount(QModelIndex()) - 1) << Label << Music;
-    emit dataChanged(index, index.siblingAtColumn(columnCount(QModelIndex()) - 1), {role});
+    emit dataChanged(index, index);
     return true;
 }
 
-int ClipModel::rowCount(const QModelIndex& idx) const
+int ClipModel::rowCount(const QModelIndex& parent) const
 {
-    if(idx.isValid())
+    if(parent.isValid())
         return 0;
 
     return m_data.size();
+
+    /* auto res= 0;
+     auto id= static_cast<TreeId*>(parent.internalPointer());
+     if(!parent.isValid())
+         res= m_data.size();
+     else if(id)
+     {
+         if(!id->range)
+         {
+             auto clip= m_data.at(id->row);
+             res= clip.ranges.size();
+         }
+     }
+     else if(id == 0)
+     {
+         qDebug() << "count title";
+         auto clip= m_data.at(id);
+         res= clip.ranges.size();
+     }
+     qDebug() << "parent" << parent << "rowCount" << res << id;*/
+    // return res;
 }
 
-int ClipModel::columnCount(const QModelIndex& idx) const
+/*QModelIndex ClipModel::index(int row, int column, const QModelIndex& parent) const
 {
-    if(idx.isValid())
-        return 0;
+    if(!parent.isValid())
+        return createIndex(row, column, static_cast<quintptr>(0));
 
-    return 5;
+    // auto gParent= parent.parent();
+    // if(gParent.isValid())
+    // return createIndex(row, column, static_cast<quintptr>(parent.row() + 1));
+    // else
+    return createIndex(row, column, static_cast<quintptr>(parent.row() + 1));
 }
+
+QModelIndex ClipModel::parent(const QModelIndex& child) const
+{
+    auto id= static_cast<int>(child.internalId() - 1);
+
+    if(id < 0)
+        return QModelIndex();
+
+    return createIndex(id, 0, static_cast<quintptr>(0));
+}*/
 
 QHash<int, QByteArray> ClipModel::roleNames() const
 {
-    return {{Duration, "duration"}, {Label, "label"}, {Color, "clipColor"},
-            {Ranges, "ranges"},     {Music, "music"}, {Offset, "offset"}};
+    return {{Duration, "duration"}, {Color, "clipColor"},       {0, "display"},  {Music, "music"},
+            {Offset, "offset"},     {RangeModelRole, "ranges"}, {Label, "label"}};
 }
 
-const std::vector<ClipInfo>& ClipModel::allData() const
+const std::vector<std::unique_ptr<ClipInfo>>& ClipModel::allData() const
 {
     return m_data;
 }
@@ -121,9 +178,12 @@ const std::vector<ClipInfo>& ClipModel::allData() const
 void ClipModel::insertClip(quint64 b, quint64 e)
 {
     auto it= std::find_if(std::begin(m_data), std::end(m_data),
-                          [b](const ClipInfo& info)
+                          [b](const std::unique_ptr<ClipInfo>& node)
                           {
-                              auto it= info.ranges->begin();
+                              auto model= node->ranges();
+
+                              Q_ASSERT(node->ranges()->rowCount() > 0);
+                              auto it= model->data(model->index(0, 0, QModelIndex()), RangeModel::Begin).toULongLong();
                               return b < it;
                           });
 
@@ -132,22 +192,11 @@ void ClipModel::insertClip(quint64 b, quint64 e)
         pos= std::distance(std::begin(m_data), it);
 
     beginInsertRows(QModelIndex(), pos, pos);
-
-    auto model= new RangeModel;
-    connect(model, &RangeModel::dataChanged, this,
-            [this]()
-            {
-                auto model= qobject_cast<RangeModel*>(sender());
-                auto it= std::find_if(std::begin(m_data), std::end(m_data),
-                                      [model](const ClipInfo& info) { return info.ranges == model; });
-                if(it == std::end(m_data))
-                    return;
-                auto dist= std::distance(std::begin(m_data), it);
-
-                emit dataChanged(index(dist, 0), {});
-            });
-    model->addRange(b, e);
-    m_data.insert(it, ClipInfo{tr("Untitled"), model, generateColor()});
+    std::unique_ptr<ClipInfo> node{new ClipInfo};
+    node->setName(tr("Untitled"));
+    node->addRange(b, e);
+    node->setColor(generateColor());
+    m_data.insert(it, std::move(node));
     endInsertRows();
 }
 
@@ -156,165 +205,123 @@ void ClipModel::rangeIntoCurrentClip(quint64 b, quint64 e)
     if(m_data.empty())
         return;
 
-    auto clip= m_data[m_data.size() - 1];
-    clip.ranges->addRange(b, e);
+    auto clip= m_data[m_data.size() - 1].get();
+    clip->addRange(b, e);
 }
 
-void ClipModel::insertClip(const ClipInfo& info)
+void ClipModel::insertClip(ClipInfo* info)
 {
     beginInsertRows(QModelIndex(), m_data.size(), m_data.size());
-    m_data.push_back(info);
+    std::unique_ptr<ClipInfo> p(info);
+    m_data.push_back(std::move(p));
     endInsertRows();
 }
 
 void ClipModel::setTitle(int i, const QString& title)
 {
-    auto& clip= m_data[i];
-    clip.label= title;
+    auto clip= m_data[i].get();
+    clip->setLabel(title);
     emit dataChanged(index(i, 0), index(i, 0), {Label});
 }
 
-void ClipModel::reset()
+void ClipModel::reset(const QList<ClipInfo*>& infos)
 {
     beginResetModel();
     m_data.clear();
+    for(auto const& info : infos)
+    {
+        std::unique_ptr<ClipInfo> p(info);
+        m_data.push_back(std::move(p));
+    }
     endResetModel();
 }
 
-RangeModel::RangeModel() {}
-
-QVariant RangeModel::data(const QModelIndex& index, int role) const
+ClipInfo::ClipInfo(QObject* parent) : m_ranges{new RangeModel}
 {
-    if(!index.isValid())
-        return {};
-
-    auto& range= m_data[index.row()];
-
-    auto c= index.column();
-
-    auto vrole= Begin + c;
-
-    if(role < Begin)
-    {
-        role= vrole;
-        qDebug() << "vrole different than role" << vrole << role;
-    }
-
-    QVariant res;
-    switch(role)
-    {
-    case Begin:
-        res= range.begin;
-        break;
-    case End:
-        res= range.end;
-        break;
-    }
-
-    return res;
+    qDebug() << "Constructor ClipInfo";
 }
 
-int RangeModel::rowCount(const QModelIndex& index) const
+ClipInfo::~ClipInfo()
 {
-    if(index.isValid())
-        return 0;
-    return m_data.size();
+    qDebug() << "Destructor ClipInfo";
+} //-8.888s
+
+RangeModel* ClipInfo::ranges() const
+{
+    return m_ranges.get();
 }
 
-QHash<int, QByteArray> RangeModel::roleNames() const
+QString ClipInfo::name() const
 {
-    return {{Begin, "begin"}, {End, "end"}};
+    return m_name;
 }
 
-bool RangeModel::setData(const QModelIndex& index, const QVariant& value, int role)
+void ClipInfo::setName(const QString& newName)
 {
-    if(!index.isValid())
-        return false;
-
-    auto& info= m_data[index.row()];
-
-    switch(role)
-    {
-    case Begin:
-        info.begin= value.toInt();
-        break;
-    case End:
-        info.end= value.toInt();
-        break;
-    }
-    emit dataChanged(index, index, {role});
-    return true;
+    if(m_name == newName)
+        return;
+    m_name= newName;
+    emit nameChanged();
 }
 
-Qt::ItemFlags RangeModel::flags(const QModelIndex& index) const
+qint64 ClipInfo::offset() const
 {
-    Q_UNUSED(index);
-    return Qt::ItemIsEditable | Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+    return m_offset;
 }
 
-int RangeModel::duration() const
+void ClipInfo::setOffset(qint64 newOffset)
 {
-    return std::accumulate(std::begin(m_data), std::end(m_data), 0,
-                           [](int a, const RangeInfo& info) { return a + ((info.end - info.begin) / 1000); });
+    if(m_offset == newOffset)
+        return;
+    m_offset= newOffset;
+    emit offsetChanged();
 }
 
-void RangeModel::addRange(quint64 b, quint64 e)
+QString ClipInfo::label() const
 {
-    beginInsertRows(QModelIndex(), m_data.size(), m_data.size());
-    m_data.push_back(RangeInfo{b, e});
-    endInsertRows();
-
-    emit durationChanged();
+    return m_label;
 }
 
-quint64 RangeModel::begin() const
+void ClipInfo::setLabel(const QString& newLabel)
 {
-    if(m_data.empty())
-        return 0;
-
-    return m_data[0].begin;
+    if(m_label == newLabel)
+        return;
+    m_label= newLabel;
+    emit labelChanged();
 }
 
-quint64 RangeModel::end() const
+QColor ClipInfo::color() const
 {
-    if(m_data.empty())
-        return 0;
-
-    return m_data[m_data.size() - 1].end;
+    return m_color;
 }
 
-const std::vector<RangeInfo> RangeModel::ranges() const
+void ClipInfo::setColor(const QColor& newColor)
 {
-    return m_data;
+    if(m_color == newColor)
+        return;
+    m_color= newColor;
+    emit colorChanged();
 }
 
-void RangeModel::setRanges(const std::vector<RangeInfo>& infos)
+QString ClipInfo::music() const
 {
-    beginResetModel();
-    m_data= infos;
-    endResetModel();
+    return m_music;
 }
 
-quint64 RangeModel::closiestPositionInClip(quint64 pos, bool* ok)
+void ClipInfo::setMusic(const QString& newMusic)
 {
-    if(ok)
-        *ok= true;
-    for(auto r : m_data)
-    {
-        if(pos <= r.begin)
-        {
-            pos= r.begin;
-            return pos;
-        }
+    if(m_music == newMusic)
+        return;
+    m_music= newMusic;
+    emit musicChanged();
+}
 
-        if(pos > r.begin && pos < r.end)
-            return pos;
+void ClipInfo::addRange(quint64 b, quint64 e)
+{
+    m_ranges->addRange(b, e);
+}
 
-        if(pos > r.begin)
-            continue;
-    }
-
-    if(ok)
-        *ok= false;
-    return pos;
+int ClipInfo::duration() const
+{
+    return m_ranges->duration();
 }

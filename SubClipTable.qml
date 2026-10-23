@@ -3,18 +3,16 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import Qt.labs.qmlmodels
 
-TableView {
+ListView {
     id: _root
 
     property alias video: offsetSelector.video
 
     model: MainController.clipModel
-    resizableColumns: true
-    alternatingRows: true
-    columnSpacing: 3
-    rowSpacing: 6
-
-
+    //resizableColumns: true
+    //alternatingRows: true
+    //columnSpacing: 3
+    //rowSpacing: 6
 
     MusicSelector {
         id: musicSelector
@@ -30,119 +28,177 @@ TableView {
         modal: true
     }
 
-    columnWidthProvider: function(column) {
-        return (_root.width-(_root.columnSpacing*3)) / 6;
+    header: RowLayout {
+        id: headerLyt
+        width: _root.width
+        property real usableWidth:  (_root.width - 40)
+        Label {
+            text: qsTr("Name")
+            Layout.fillWidth: true
+            horizontalAlignment: Qt.AlignHCenter
+            Layout.leftMargin:  40
+            Layout.minimumWidth:  headerLyt.usableWidth * 0.4
+            Layout.maximumWidth:  headerLyt.usableWidth * 0.4
+        }
+        Label {
+            text: qsTr("Duration")
+            horizontalAlignment: Qt.AlignHCenter
+            Layout.minimumWidth:  headerLyt.usableWidth * 0.1
+            Layout.maximumWidth:  headerLyt.usableWidth * 0.1
+        }
+        Label {
+            text: qsTr("music")
+            horizontalAlignment: Qt.AlignHCenter
+            Layout.fillWidth: true
+            Layout.minimumWidth:  headerLyt.usableWidth * 0.4
+            Layout.maximumWidth:  headerLyt.usableWidth * 0.4
+        }
+        Label {
+            text: qsTr("OffSet")
+            horizontalAlignment: Qt.AlignHCenter
+            Layout.minimumWidth:  headerLyt.usableWidth * 0.1
+            Layout.maximumWidth:  headerLyt.usableWidth * 0.1
+        }
     }
 
+    /*columnWidthProvider: function(column) {
+        return (_root.width-(_root.columnSpacing*4)) / 5;
+    }*/
+
     Layout.fillWidth: true
-    editTriggers : TableView.SingleTapped
-    DelegateChooser {
-        id: chooser
-        role: "type"
-        DelegateChoice {
-            column: 0
-            ColumnLayout {
-                id: lyt
-                implicitHeight: repeater.count * 20
-                Repeater {
-                    id: repeater
-                    model: ranges
-                    onCountChanged: _root.forceLayout()
-                    RowLayout {
-                        Layout.fillWidth: true
-                        TextField {
-                            text: begin
-                            onTextEdited: {
-                                begin = text
-                            }
-                           /* TableView.editDelegate: TextField {
-                                anchors.fill: parent
-                                text: begin
-                                horizontalAlignment: TextInput.AlignHCenter
-                                verticalAlignment: TextInput.AlignVCenter
-                                Component.onCompleted: selectAll()
+    delegate: ColumnLayout {
+        id: deLyt
+        width: _root.width
+        required property RangeModel ranges
+        required property int duration
+        required property string label
+        required property string music
+        required property int offset
+        required property int index
+        required property var model
+        property real usableWidth:  (_root.width - 40)
+        RowLayout {
+            Layout.fillWidth: true
+            ToolButton {
+                id: detail
+                text: "▶"
+                checkable: true
+                Layout.minimumWidth:  40
+                Layout.maximumWidth:  40
+                rotation: checked ? 90 : 0
+                flat: true
+                background: Item {}
+            }
 
-                                TableView.onCommit: {
-                                    begin = text
-                                }
-                            }*/
-                        }
-                        TextField {
-                            text: end
-                            onTextEdited: {
-                                end = text
-                            }
-
-                            /*TableView.editDelegate: TextField {
-                                anchors.fill: parent
-                                text: end
-                                horizontalAlignment: TextInput.AlignHCenter
-                                verticalAlignment: TextInput.AlignVCenter
-                                Component.onCompleted: selectAll()
-
-                                TableView.onCommit: {
-                                    modelData.begin = text
-                                }
-                            }*/
-                        }
-                    }
-
+            TextField {
+                Layout.fillWidth: true
+                text: deLyt.label
+                Layout.minimumWidth:  deLyt.usableWidth * 0.4
+                Layout.maximumWidth:  deLyt.usableWidth * 0.4
+                onEditingFinished: {
+                    console.log("clip name changed: ",text)
+                    model.label = text
                 }
             }
-        }
-        DelegateChoice {
-            column: 1
-            Text {
-                text: "%1s".arg(duration)
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
+            Label {
+                text: deLyt.duration
+                Layout.preferredWidth: 100
+                Layout.minimumWidth:  deLyt.usableWidth * 0.1
+                Layout.maximumWidth:  deLyt.usableWidth * 0.1
             }
-        }
-        DelegateChoice {
-            column: 2
-            Text {
-                text: label
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-                TableView.editDelegate: TextField {
-                    anchors.fill: parent
-                    text: label
-                    horizontalAlignment: TextInput.AlignHCenter
-                    verticalAlignment: TextInput.AlignVCenter
-                    Component.onCompleted: selectAll()
-
-                    TableView.onCommit: {
-                        label = text
-                    }
-                }
-            }
-        }
-        DelegateChoice {
-            column: 3
             Button {
-                text: music ? music : "music"
-                onClicked: {
-                    //music = "/media/renaud/musique/bangles/emule/Bangles - Walk Like An Egyptian.mp3"
-                    musicSelector.indexClip = row
+                text: deLyt.music
+                Layout.fillWidth: true
+                Layout.minimumWidth:  deLyt.usableWidth * 0.4
+                Layout.maximumWidth:  deLyt.usableWidth * 0.4
+                onClicked:{
+                    musicSelector.indexClip = deLyt.index
                     musicSelector.open()
                 }
             }
-        }
-        DelegateChoice {
-            column: 4
-
             Button {
-                text: offset ? offset : "offset"
-                onClicked: {
-                    offsetSelector.model = ranges
-                    offsetSelector.indexClip = row
-                    offsetSelector.song = music
+                text: deLyt.offset
+                Layout.minimumWidth:  deLyt.usableWidth * 0.1
+                Layout.maximumWidth:  deLyt.usableWidth * 0.1
+                onClicked:{
+                    offsetSelector.indexClip = deLyt.index
+                    offsetSelector.song = model.music
+                    offsetSelector.clipDuration = deLyt.duration
                     offsetSelector.open()
                 }
             }
         }
+        RowLayout {
+            Layout.leftMargin: 100
+            Layout.fillWidth: true
+            visible: detail.checked
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("Begin")
+            }
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("End")
+            }
+            Label {
+                text: qsTr("Duration")
+                Layout.preferredWidth: 100
+            }
+        }
+        ListView {
+            id: listSubClip
+            visible: detail.checked
+            Layout.leftMargin: 100
+            Layout.fillWidth: true
+            Layout.preferredHeight: 20 * count
+            model: deLyt.ranges
+            delegate: RowLayout {
+                id: subClipDelegate
+                width: listSubClip.width
+                required property int begin
+                required property int end
+                required property int duration
+                required property var model
+                TextField {
+                    Layout.fillWidth: true
+                    text: subClipDelegate.begin
+                    onEditingFinished: {
+                        console.log("subclip begin changed: ",text)
+                        model.begin = text
+                    }
+                }
+                TextField {
+                    Layout.fillWidth: true
+                    text: subClipDelegate.end
+                    onEditingFinished: {
+                        console.log("subclip End changed: ",text)
+                        model.end = text
+                    }
+                }
+                Label {
+                    text: subClipDelegate.duration
+                    Layout.preferredWidth: 100
+
+                }
+            }
+        }
     }
-    delegate: chooser
+
+    //editTriggers : TableView.SingleTapped
+    /*delegate: TreeViewDelegate {
+
+        Rectangle {
+            color: clipColor
+            Timer {
+                running: parent.visible
+                repeat: true
+                onTriggered: console.log("dispaly",parent.color," ",clipColor)
+            }
+
+            visible: column === 3
+            anchors.fill: parent
+        }
+    }*/
 
     Rectangle {
         anchors.fill: parent

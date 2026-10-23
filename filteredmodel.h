@@ -1,8 +1,40 @@
 #ifndef FILTEREDMODEL_H
 #define FILTEREDMODEL_H
 
+#include "clipmodel.h"
 #include <QQmlEngine>
 #include <QSortFilterProxyModel>
+
+class ClipListModel : public QAbstractListModel
+{
+    Q_OBJECT
+    QML_ELEMENT
+
+    Q_PROPERTY(ClipModel* sourceModel READ sourceModel WRITE setSourceModel NOTIFY sourceModelChanged FINAL)
+
+public:
+    enum Roles
+    {
+        beginRole= Qt::UserRole + 1,
+        endRole,
+        colorRole,
+        labelRole
+    };
+    ClipListModel();
+
+    QVariant data(const QModelIndex& index, int role) const override;
+    int rowCount(const QModelIndex& parent) const override;
+    QHash<int, QByteArray> roleNames() const override;
+
+    ClipModel* sourceModel() const;
+    void setSourceModel(ClipModel* newSourceModel);
+
+signals:
+    void sourceModelChanged();
+
+private:
+    QPointer<ClipModel> m_model;
+};
 
 class FilteredModel : public QSortFilterProxyModel
 {

@@ -8,8 +8,7 @@ namespace Utils
 {
 QByteArray model2Json(const QString& file, const ClipModel* model)
 {
-
-    auto data= model->allData();
+    auto const& data= model->allData();
     QJsonObject root;
     root["video"]= file;
     QJsonArray infoArray;
@@ -18,20 +17,21 @@ QByteArray model2Json(const QString& file, const ClipModel* model)
     {
         QJsonObject obj;
         QJsonArray rangesArray;
-        auto list= info.ranges->ranges();
+        auto list= info->ranges()->allRanges();
         for(auto const& range : list)
         {
             QJsonObject rangeJson;
-            rangeJson["begin"]= static_cast<qint64>(range.begin);
-            rangeJson["end"]= static_cast<qint64>(range.end);
+            rangeJson["begin"]= static_cast<qint64>(range.first);
+            rangeJson["end"]= static_cast<qint64>(range.second);
 
             rangesArray.append(rangeJson);
         }
         obj["ranges"]= rangesArray;
-        obj["label"]= info.label;
-        obj["music"]= info.music;
-        obj["color"]= info.color.name();
-        obj["offset"]= static_cast<qint64>(info.offset);
+        obj["label"]= info->label();
+        obj["music"]= info->music();
+        obj["color"]= info->color().name();
+        obj["name"]= info->name();
+        obj["offset"]= static_cast<qint64>(info->offset());
         infoArray.append(obj);
     }
     root["clips"]= infoArray;
@@ -52,25 +52,33 @@ void readJson(const QString& file, MainController* ctrl)
     QJsonDocument doc= QJsonDocument::fromJson(byte);
     auto obj= doc.object();
 
-    ctrl->setFileName(obj["video"].toString());
+    ctrl->setVideoFilePath(obj["video"].toString());
 
     auto clips= obj["clips"].toArray();
     auto model= ctrl->clipModel();
 
-    for(auto const& clipref : clips)
+    QList<ClipInfo*> infos;
+    for(auto const& clipref : std::as_const(clips))
     {
         auto clip= clipref.toObject();
         auto array= clip["ranges"].toArray();
-        auto ranges= new RangeModel;
-        for(auto obj : array)
+        auto clipInfo= new ClipInfo();
+
+        for(auto obj : std::as_const(array))
         {
             auto json= obj.toObject();
-            ranges->addRange(static_cast<quint64>(json["begin"].toInteger()),
-                             static_cast<quint64>(json["end"].toInteger()));
+            clipInfo->addRange(static_cast<quint64>(json["begin"].toInteger()),
+                               static_cast<quint64>(json["end"].toInteger()));
         }
-        model->insertClip(ClipInfo{clip["label"].toString(), ranges, QColor::fromString(clip["color"].toString()),
-                                   clip["music"].toString(), clip["offset"].toInteger()});
+        clipInfo->setName(clip["name"].toString());
+        clipInfo->setColor(QColor::fromString(clip["color"].toString()));
+        clipInfo->setMusic(clip["music"].toString());
+        clipInfo->setLabel(clip["label"].toString());
+        clipInfo->setOffset(clip["offset"].toInteger());
+
+        infos.append(clipInfo);
     }
+    model->reset(infos);
 }
 
 void readAudioList(const QString& filename, AudioFileModel* model)
@@ -107,5 +115,29 @@ void readAudioList(const QString& filename, AudioFileModel* model)
     }
 
     model->appendSongs(vec);
+}
+
+quint64 closiestPositionInClip(const QList<std::pair<quint64, quint64>>& ranges, quint64 pos, bool* ok)
+{
+    if(ok)
+        *ok= true;
+    for(auto r : ranges)
+    {
+        if(pos <= r.first)
+        {
+            pos= r.first;
+            return pos;
+        }
+
+        if(pos > r.first && pos < r.second)
+            return pos;
+
+        if(pos > r.first)
+            continue;
+    }
+
+    if(ok)
+        *ok= false;
+    return pos;
 }
 } // namespace Utils

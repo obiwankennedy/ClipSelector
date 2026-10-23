@@ -10,13 +10,14 @@ Dialog {
     height: 600
     standardButtons: Dialog.Ok | Dialog.Cancel
 
-    property RangeModel model
+
     property int indexClip
     property string video
     property string song
-    readonly property int clipDuration: model.duration * 1000
+    property int clipDuration
     onClipDurationChanged: console.log("clipDuration:",clipDuration)
     property int offset: audio.duration * offsetMask.x / spectre.width
+
 
     onVisibleChanged: {
         if(!visible)
@@ -51,7 +52,7 @@ Dialog {
         videoOutput: video
         onPositionChanged: {
             console.log("position on change:",player.position)
-            const newPos = model.closiestPositionInClip(player.position)
+            const newPos = MainController.closiestPosition(root.indexClip, player.position)
 
             if( newPos !== player.position)
                 player.position = newPos
@@ -83,8 +84,8 @@ Dialog {
                 icon.name: "media-playback-start"
                 onClicked: {
                     player.play()
-                    console.log("position:",root.position)
-                    player.position = model.closiestPositionInClip(0)
+                    console.log("position:",player.position)
+                    player.position = MainController.closiestPosition(root.indexClip, 0)
                     console.log("position:",player.position)
                     if(root.offset<0)
                     {
@@ -119,8 +120,8 @@ Dialog {
                 id: offsetMask
                 opacity: 0.4
                 color: "red"
-                height: parent.height
-                width: root.clipDuration*parent.width/audio.duration
+                height: parent.height
+                width: (root.clipDuration*1000)*parent.width/audio.duration
                 x: 0
                 y: 0
                 onXChanged:  {

@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(PkgConfig)
 pkg_check_modules(TAGLIB REQUIRED IMPORTED_TARGET taglib)
-find_package(Qt6 6.5 REQUIRED COMPONENTS Quick Multimedia)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Quick Multimedia Test)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
@@ -36,6 +36,8 @@ qt_add_qml_module(clipSelector
         SOURCES filteredmodel.h filteredmodel.cpp
         QML_FILES OffsetSelector.qml
         SOURCES audiospect.h audiospect.cpp
+        QML_FILES SettingsContent.qml
+        SOURCES rangemodel.h rangemodel.cpp
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
@@ -50,7 +52,7 @@ set_target_properties(clipSelector PROPERTIES
 )
 
 target_link_libraries(clipSelector
-    PRIVATE Qt6::Quick Qt6::Multimedia PkgConfig::TAGLIB audiorw
+    PRIVATE Qt6::Quick Qt6::Multimedia PkgConfig::TAGLIB Qt6::Test audiorw
 )
 
 include(GNUInstallDirs)
@@ -59,3 +61,4 @@ install(TARGETS clipSelector
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+add_subdirectory(test)

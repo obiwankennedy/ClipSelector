@@ -7,21 +7,34 @@ import Views
 
 ApplicationWindow {
     width: 640
-    height: 480
+    height: 700
     visible: true
     title: qsTr("ClipSelector")
+
+    onClosing: MainController.writeSettings()
 
     FileDialog {
         id: open
         currentFolder: StandardPaths.standardLocations(StandardPaths.MoviesLocation)[0]
-        onAccepted: MainController.fileName = open.currentFile
+        onAccepted: {
+            if(open.currentFile.toString().endsWith("json"))
+            {
+                MainController.projectFilePath = open.currentFile
+                MainController.openJson(MainController.projectFilePath)
+            }
+            else
+                MainController.videoFilePath = open.currentFile
+        }
     }
 
     Timer {
         id: timer
         repeat: true
         interval: 1000*60*10//10mins
-        onTriggered: MainController.saveModel(save.currentFile)
+        onTriggered: {
+            if(MainController.projectFilePath && !MainController.busy)
+                MainController.saveModel(save.projectFilePath)
+        }
     }
 
 
@@ -29,9 +42,23 @@ ApplicationWindow {
         id: save
         currentFolder: open.currentFolder
         fileMode: FileDialog.SaveFile
+        nameFilters: ["Project file (*.json)"]
         onAccepted: {
-            MainController.saveModel(save.currentFile)
+            MainController.projectFilePath = save.currentFile
+            MainController.saveModel(MainController.projectFilePath)
             timer.start()
+        }
+    }
+
+
+
+    Popup {
+        id: settingPopup
+        anchors.centerIn: Overlay.overlay
+        width: 200
+        height: 200
+        SettingsContent {
+            anchors.fill: parent
         }
     }
 
@@ -50,8 +77,8 @@ ApplicationWindow {
             Action {
                 text: qsTr("Save")
                 onTriggered: {
-                    if(MainController.fileName)
-                        MainController.saveModel(MainController.fileName)
+                    if(MainController.projectFilePath)
+                        MainController.saveModel(MainController.projectFilePath)
                     else
                         save.open()
                 }
@@ -66,6 +93,14 @@ ApplicationWindow {
             Action {
                 text: qsTr("Quit")
                 onTriggered: Qt.exit(0)
+            }
+        }
+
+        Menu {
+            title: qsTr("Edition")
+            Action {
+                text: qsTr("Settings")
+                onTriggered: settingPopup.open()
             }
         }
 

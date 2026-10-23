@@ -1,5 +1,7 @@
 #include "audiospect.h"
 
+#include <libavcodec/avcodec.h>
+
 #include <QAudioBuffer>
 #include <QAudioFormat>
 #include <QSGSimpleRectNode>
