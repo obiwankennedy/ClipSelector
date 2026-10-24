@@ -14,9 +14,9 @@ class MainController : public QObject
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
+    // clang-format off
     Q_PROPERTY(QString videoFilePath READ videoFilePath WRITE setVideoFilePath NOTIFY videoFilePathChanged FINAL)
-    Q_PROPERTY(
-        QString projectFilePath READ projectFilePath WRITE setProjectFilePath NOTIFY projectFilePathChanged FINAL)
+    Q_PROPERTY(QString projectFilePath READ projectFilePath WRITE setProjectFilePath NOTIFY projectFilePathChanged FINAL)
     Q_PROPERTY(ClipModel* clipModel READ clipModel CONSTANT)
     Q_PROPERTY(ClipListModel* clipListModel READ clipListModel CONSTANT)
     Q_PROPERTY(quint64 position READ position WRITE setPosition NOTIFY positionChanged FINAL)
@@ -24,8 +24,21 @@ class MainController : public QObject
     Q_PROPERTY(FilteredModel* wantedMusics READ wantedMusics CONSTANT)
     Q_PROPERTY(QUrl clipMakeScript READ clipMakeScript WRITE setClipMakeScript NOTIFY clipMakeScriptChanged FINAL)
     Q_PROPERTY(bool busy READ busy WRITE setBusy NOTIFY busyChanged FINAL)
+    Q_PROPERTY(MainController::AppMode appMode READ appMode WRITE setAppMode NOTIFY appModeChanged FINAL)
+    // clang-format on
 public:
+    // The two operating modes of the application.
+    enum AppMode
+    {
+        MusicClip= 0,
+        Tutorial
+    };
+    Q_ENUM(AppMode)
+
     explicit MainController(QObject* parent= nullptr);
+
+    // Canonical, translatable names of the two modes (index == AppMode).
+    static QStringList modeNames();
 
     QString videoFilePath() const;
     void setVideoFilePath(const QString& newFileName);
@@ -46,6 +59,9 @@ public:
     bool busy() const;
     void setBusy(bool newBusy);
 
+    MainController::AppMode appMode() const;
+    void setAppMode(MainController::AppMode newAppMode);
+
     QString projectFilePath() const;
     void setProjectFilePath(const QString& newProjectFilePath);
 
@@ -63,15 +79,12 @@ public slots:
 
 signals:
     void videoFilePathChanged();
-
     void play();
     void movePosition(quint64 p);
     void positionChanged();
-
     void clipMakeScriptChanged();
-
     void busyChanged();
-
+    void appModeChanged();
     void projectFilePathChanged();
 
 private slots:
@@ -88,6 +101,7 @@ private:
     QUrl m_clipMakeScript;
     bool m_busy;
     QString m_projectFilePath;
+    MainController::AppMode m_appMode{MainController::MusicClip};
 };
 
 #endif // MAINCONTROLLER_H

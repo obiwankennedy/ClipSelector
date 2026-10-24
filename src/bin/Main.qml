@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import QtMultimedia
 import QtQuick.Dialogs
-import QtCore
 import Views
 
 ApplicationWindow {
@@ -11,7 +11,10 @@ ApplicationWindow {
     visible: true
     title: qsTr("ClipSelector")
 
-    onClosing: MainController.writeSettings()
+    onClosing: {
+        MainController.writeSettings()
+        TutorialController.writeSettings()
+    }
 
     FileDialog {
         id: open
@@ -50,13 +53,50 @@ ApplicationWindow {
         }
     }
 
+    Dialog {
+        id: runMakeClip
+        anchors.centerIn: Overlay.overlay
+
+        //height: lyt.implicitHeight + 30
+
+        GridLayout {
+            id: lyt
+            columns: 2
+            Label {
+                text: qsTr("VideFile:")
+            }
+            Label {
+                text: MainController.videoFilePath
+            }
+
+            Switch {
+                id: keepSizeSw
+                text: qsTr("Keep Size")
+            }
+            Switch {
+                id: labelSw
+                text: qsTr("Label")
+            }
+            Switch {
+                id: mergeSw
+                text: qsTr("Merge")
+            }
+            Switch {
+                id: nomusicSw
+                text: qsTr("No music")
+            }
+        }
+         standardButtons: Dialog.Ok | Dialog.Cancel
+         onAccepted: MainController.runClipMaker(keepSizeSw.checked, labelSw.checked, mergeSw.checked, nomusicSw.checked)
+    }
+
 
 
     Popup {
         id: settingPopup
         anchors.centerIn: Overlay.overlay
-        width: 200
-        height: 200
+        width: 460
+        height: 420
         SettingsContent {
             anchors.fill: parent
         }
@@ -102,16 +142,15 @@ ApplicationWindow {
                 text: qsTr("Settings")
                 onTriggered: settingPopup.open()
             }
+            Action {
+                text: qsTr("Tutorial")
+                checked: MainController.appMode === MainController.Tutorial
+                onTriggered: MainController.appMode = MainController.Tutorial
+            }
         }
-
     }
 
-    Item {
+    EditorContent {
         anchors.fill: parent
-
-        VideoPlayer {
-            anchors.fill: parent
-        }
-
     }
 }

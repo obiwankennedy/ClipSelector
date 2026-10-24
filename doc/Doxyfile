@@ -1,0 +1,29 @@
+# Doxygen configuration for ClipSelector.
+#
+# Generate HTML docs with:
+#   doxygen doc/Doxyfile
+#
+# UML diagrams (class diagrams) are rendered automatically by Doxygen when
+# graphviz (the `dot` tool) is installed on the system.
+
+PROJECT_NAME           = "ClipSelector"
+PROJECT_BRIEF          = "Qt QML video clip selector"
+OUTPUT_DIRECTORY       = .
+CREATE_HTML_DOCS       = YES
+CREATE_PDF_DOCS        = NO
+HTML_OUTPUT            = html
+INPUT                  = ../src
+FILE_PATTERNS          = *.h *.cpp *.qml
+RECURSIVE              = YES
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+QUIET                  = YES
+JAVADOC_AUTOBRIEF      = YES
+OPTIMIZE_OUTPUT_FOR_C  = NO
+OPTIMIZE_OUTPUT_JAVA   = NO
+CLASS_DIAGRAMS         = YES
+HAVE_DOT               = YES
+DOT_PATH               =
+GENERATE_LEGEND        = YES
+DOT_FONTNAME           = "Helvetica"
+DOT_FONTSIZE           = 10

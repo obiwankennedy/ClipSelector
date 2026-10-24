@@ -239,6 +239,24 @@ void MainController::setBusy(bool newBusy)
     emit busyChanged();
 }
 
+QStringList MainController::modeNames()
+{
+    return {QString::fromUtf8("MUSIC CLIP"), QString::fromUtf8("TUTORIAL")};
+}
+
+MainController::AppMode MainController::appMode() const
+{
+    return m_appMode;
+}
+
+void MainController::setAppMode(MainController::AppMode newAppMode)
+{
+    if(m_appMode == newAppMode)
+        return;
+    m_appMode= newAppMode;
+    emit appModeChanged();
+}
+
 QString MainController::projectFilePath() const
 {
     return m_projectFilePath;

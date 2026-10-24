@@ -27,46 +27,97 @@ void FilteredModel::setSearch(const QString& search)
 
 ClipListModel::ClipListModel() {}
 
+namespace
+{
+    // Maps a flat ClipListModel row to the ClipInfo it belongs to and the
+    // index of the range inside that clip.
+    struct RowMapping
+    {
+        ClipInfo* info= nullptr;
+        int rangeIndex= 0;
+    };
+
+    RowMapping resolveRow(const std::vector<std::unique_ptr<ClipInfo>>& infos, int row)
+    {
+        RowMapping m;
+        int acc= 0;
+        for(auto const& info : infos)
+        {
+            auto size= info->ranges()->rowCount();
+            if(row < acc + size)
+            {
+                m.info= info.get();
+                m.rangeIndex= row - acc;
+                break;
+            }
+            acc+= size;
+        }
+        return m;
+    }
+}
+
 QVariant ClipListModel::data(const QModelIndex& index, int role) const
 {
-    auto r= index.row();
-    int rangeIndex= 0;
-    auto const& infos= m_model->allData();
-    int i= 0;
-    while(r > 0 && infos.size() > i)
-    {
-        auto size= infos[i]->ranges()->rowCount();
-        if(r - size >= 0)
-            r-= size;
-        else
-        {
-            rangeIndex= r;
-            r-= size;
-        }
-        ++i;
-    }
-    auto info= infos[i].get();
-    if(!info)
+    if(!m_model)
         return {};
-    auto ranges= info->ranges();
+    auto mapping= resolveRow(m_model->allData(), index.row());
+    if(!mapping.info)
+        return {};
+    auto ranges= mapping.info->ranges();
     QVariant res;
     switch(role)
     {
     case beginRole:
-        res= ranges->data(ranges->index(rangeIndex, 0), RangeModel::Begin);
+        res= ranges->data(ranges->index(mapping.rangeIndex, 0), RangeModel::Begin);
         break;
     case endRole:
-        res= ranges->data(ranges->index(rangeIndex, 0), RangeModel::End);
+        res= ranges->data(ranges->index(mapping.rangeIndex, 0), RangeModel::End);
         break;
     case colorRole:
-        res= QVariant::fromValue(info->color());
+        res= QVariant::fromValue(mapping.info->color());
         break;
     case labelRole:
-        res= info->label();
+        res= mapping.info->label();
         break;
     }
 
     return res;
+}
+
+Qt::ItemFlags ClipListModel::flags(const QModelIndex& index) const
+{
+    if(!index.isValid())
+        return Qt::NoItemFlags;
+    return Qt::ItemIsEditable | Qt::ItemIsEnabled;
+}
+
+bool ClipListModel::setData(const QModelIndex& index, const QVariant& value, int role)
+{
+    if(!index.isValid() || !m_model)
+        return false;
+    auto mapping= resolveRow(m_model->allData(), index.row());
+    if(!mapping.info)
+        return false;
+    auto ranges= mapping.info->ranges();
+    auto rIndex= ranges->index(mapping.rangeIndex, 0);
+    bool ok= false;
+    switch(role)
+    {
+    case beginRole:
+        ok= ranges->setData(rIndex, value, RangeModel::Begin);
+        break;
+    case endRole:
+        ok= ranges->setData(rIndex, value, RangeModel::End);
+        break;
+    default:
+        return false;
+    }
+    if(!ok)
+        return false;
+    // The RangeModel's dataChanged is not observed by this model, so notify
+    // our own QML delegate that this row changed.
+    emit dataChanged(index, index);
+    return true;
 }
 
 int ClipListModel::rowCount(const QModelIndex& parent) const
