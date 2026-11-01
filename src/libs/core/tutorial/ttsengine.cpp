@@ -1,6 +1,7 @@
 #include "ttsengine.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -10,23 +11,17 @@
 
 namespace
 {
-// Default location of the authoritative Piper integration script.
+// Default location of the authoritative Piper integration script. The voice
+// (language) models and the .venv python interpreter live in the same
+// directory as the script and are derived from it (see setScriptPath()).
 const char* kDefaultScript
     = "/home/renaud/documents/11_rolisteam/05_documentation/01_videos/v1.10/gen_audio_files.py";
-// The script lives inside a directory that contains a .venv with Piper.
-const char* kDefaultPython
-    = "/home/renaud/documents/11_rolisteam/05_documentation/01_videos/v1.10/.venv/bin/python3";
-// Piper models are kept next to the script.
-const char* kDefaultModelDir
-    = "/home/renaud/documents/11_rolisteam/05_documentation/01_videos/v1.10";
 }
 
 TtsEngine::TtsEngine(QObject* parent)
     : QObject(parent)
-    , m_scriptPath(kDefaultScript)
-    , m_pythonPath(kDefaultPython)
-    , m_modelDirectory(kDefaultModelDir)
 {
+    setScriptPath(kDefaultScript);
 }
 
 QString TtsEngine::scriptPath() const
@@ -36,7 +31,20 @@ QString TtsEngine::scriptPath() const
 
 void TtsEngine::setScriptPath(const QString& script)
 {
+    if(m_scriptPath == script)
+        return;
     m_scriptPath= script;
+
+    // The voice (language) models are kept next to the script, and the python
+    // interpreter is the .venv in the same directory: derive both from the
+    // script location so they always match the Piper environment in use.
+    // Re-derive BEFORE emitting scriptPathChanged so observers see a
+    // consistent (script, model dir, python) triple.
+    const QString dir= QFileInfo(script).absolutePath();
+    setModelDirectory(dir);
+    setPythonPath(QDir(dir).filePath(".venv/bin/python3"));
+
+    emit scriptPathChanged();
 }
 
 QString TtsEngine::pythonPath() const
@@ -46,7 +54,10 @@ QString TtsEngine::pythonPath() const
 
 void TtsEngine::setPythonPath(const QString& python)
 {
+    if(m_pythonPath == python)
+        return;
     m_pythonPath= python;
+    emit pythonPathChanged();
 }
 
 QString TtsEngine::modelDirectory() const
@@ -56,7 +67,10 @@ QString TtsEngine::modelDirectory() const
 
 void TtsEngine::setModelDirectory(const QString& dir)
 {
+    if(m_modelDirectory == dir)
+        return;
     m_modelDirectory= dir;
+    emit modelDirectoryChanged();
 }
 
 QList<TtsEngine::Voice> TtsEngine::voices() const
@@ -66,11 +80,14 @@ QList<TtsEngine::Voice> TtsEngine::voices() const
     if(!dir.exists())
         return result;
 
-    const auto entries= dir.entryList({"./*.onnx"}, QDir::Files);
+    // Name filters are glob patterns matched against the file name only
+    // (a "./" prefix would never match).
+    const auto entries= dir.entryList({"*.onnx"}, QDir::Files);
     for(const auto& entry : entries)
     {
         QFileInfo fi(dir, entry);
-        if(!fi.suffix().compare("onnx", Qt::CaseInsensitive))
+        // compare() returns 0 when equal: keep only the .onnx models.
+        if(fi.suffix().compare("onnx", Qt::CaseInsensitive) != 0)
             continue;
         Voice v;
         v.name= fi.completeBaseName(); // e.g. en_US-amy-medium
@@ -120,17 +137,24 @@ bool TtsEngine::isAvailable(QString* details) const
 QStringList TtsEngine::buildCommand(const QString& text, const QString& destDir,
                                     const QString& lang) const
 {
-    // gen_audio_files.py reads a JSON *array* of texts and writes file_00.wav
-    // (zero padded) into the destination folder. The folder must already exist
-    // (the script does not create it), which ensureDestDir() guarantees.
+    // gen_audio_files.py reads a JSON *file* containing an array of texts and
+    // writes file_00.wav (zero padded) into the destination folder. The folder
+    // must already exist (the script does not create it), which ensureDestDir()
+    // guarantees.
     QJsonArray texts;
     texts.append(text);
-    const QString textJson= QString::fromUtf8(
-        QJsonDocument(texts).toJson(QJsonDocument::Compact));
+    const QString textFile= QDir(destDir).filePath("texts.json");
+    {
+        QFile file(textFile);
+        if(file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            file.write(QJsonDocument(texts).toJson(QJsonDocument::Compact));
+        else
+            qWarning() << "TtsEngine: could not write" << textFile << ":" << file.errorString();
+    }
 
     QStringList args;
     args << m_scriptPath
-         << "-t" << textJson
+         << "-t" << textFile
          << "-d" << destDir
          << "-l" << lang;
     return args;

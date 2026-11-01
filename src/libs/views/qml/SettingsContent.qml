@@ -3,16 +3,31 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Dialogs
 import Views
+import Core
 
-Item {
+Pane {
     id: root
+
+    // FileDialog/FolderDialog report their selection as a url; normalize it
+    // to a plain local path for the C++ settings.
+    function localPath(u) {
+        var s = u.toString()
+        if (s.startsWith("file://"))
+            s = s.slice(7)
+        return s
+    }
+
     FileDialog {
         id: openFile
         fileMode: FileDialog.OpenFile
     }
     FileDialog {
-        id: openFolder
-        fileMode: FileDialog.OpenDirectory
+        id: openScript
+        fileMode: FileDialog.OpenFile
+        nameFilters: [qsTr("Python scripts (*.py)")]
+    }
+    FolderDialog {
+        id: openModelDir
     }
 
     ColumnLayout {
@@ -29,9 +44,10 @@ Item {
                 text: qsTr("ClipMaker path:")
             }
             TextField {
-                text: MainController.clipMakeScript
+                Layout.fillWidth: true
+                text: MainController.renderCtrl.clipMakeScript
                 onEditingFinished: {
-                    MainController.clipMakeScript = Qt.url(text)
+                    MainController.renderCtrl.clipMakeScript = Qt.url(text)
                 }
             }
             Button {
@@ -51,10 +67,10 @@ Item {
             }
             ComboBox {
                 id: langBox
-                model: TutorialController.languages
-                textRole: "name"
-                onActivated: TutorialController.language = model[index]
-                Component.onCompleted: currentIndex = Math.max(0, model.indexOf(TutorialController.language))
+                Layout.fillWidth: true
+                model: MainController.tutoCtrl.languages
+                onActivated: MainController.tutoCtrl.language = model[index]
+                Component.onCompleted: currentIndex = Math.max(0, model.indexOf(MainController.tutoCtrl.language))
             }
             Item {}
 
@@ -63,46 +79,80 @@ Item {
             }
             ComboBox {
                 id: voiceBox
-                model: TutorialController.voices
-                textRole: "name"
-                onActivated: TutorialController.voice = model[index]
-                onModelChanged: currentIndex = Math.max(0, model.indexOf(TutorialController.voice))
+                Layout.fillWidth: true
+                model: MainController.tutoCtrl.voices
+                onActivated: MainController.tutoCtrl.voice = model[index]
+                onModelChanged: currentIndex = Math.max(0, model.indexOf(MainController.tutoCtrl.voice))
             }
             Item {}
 
             Label {
-                text: qsTr("Model dir:")
+                text: qsTr("Piper script:")
             }
             TextField {
-                text: TutorialController.ttsEngine.modelDirectory
-                onEditingFinished: TutorialController.ttsEngine.modelDirectory = text
+                id: scriptField
+                Layout.fillWidth: true
+                // The voice (language) models and the python interpreter are
+                // derived from the directory containing this script.
+                text: MainController.tutoCtrl.ttsEngine.scriptPath
+                onEditingFinished: MainController.tutoCtrl.ttsEngine.scriptPath = text
             }
             Button {
                 text: qsTr("Browser")
-                onClicked: openFolder.open()
+                onClicked: openScript.open()
             }
-        }
 
-        Label {
-            text: qsTr("Piper script:")
-        }
-        TextField {
-            text: TutorialController.ttsEngine.scriptPath
-            onEditingFinished: TutorialController.ttsEngine.scriptPath = text
-        }
-        Label {
-            text: qsTr("Python:")
-        }
-        TextField {
-            text: TutorialController.ttsEngine.pythonPath
-            onEditingFinished: TutorialController.ttsEngine.pythonPath = text
+            Label {
+                text: qsTr("Model dir (voices):")
+            }
+            TextField {
+                id: modelDirField
+                Layout.fillWidth: true
+                text: MainController.tutoCtrl.ttsEngine.modelDirectory
+                onEditingFinished: MainController.tutoCtrl.ttsEngine.modelDirectory = text
+            }
+            Button {
+                text: qsTr("Browser")
+                onClicked: openModelDir.open()
+            }
+
+            Label {
+                text: qsTr("Python:")
+            }
+            TextField {
+                id: pythonField
+                Layout.fillWidth: true
+                text: MainController.tutoCtrl.ttsEngine.pythonPath
+                readOnly: true
+            }
+            Item {}
         }
     }
 
     Connections {
-        target: openFolder
+        target: openFile
         function onAccepted() {
-            TutorialController.ttsEngine.modelDirectory = openFolder.currentFile
+            MainController.renderCtrl.clipMakeScript= openFile.selectedFile
         }
+    }
+
+    Connections {
+        target: openScript
+        function onAccepted() {
+            MainController.tutoCtrl.ttsEngine.scriptPath= localPath(openScript.selectedFile)
+        }
+    }
+
+    Connections {
+        target: openModelDir
+        function onAccepted() {
+            MainController.tutoCtrl.ttsEngine.modelDirectory= localPath(openModelDir.selectedFolder)
+        }
+    }
+
+    background: Rectangle {
+        border.width: 1
+        border.color: "#616161"
+        radius: 8
     }
 }

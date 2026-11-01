@@ -38,17 +38,12 @@ void model::test_case1()
     m_clipModel->insertClip(0, 1000);
 
     QCOMPARE(m_clipModel->rowCount(), 1);
-    QCOMPARE(m_clipModel->rowCount(m_clipModel->index(0, 0, QModelIndex())), 1);
-    QCOMPARE(m_clipModel->rowCount(m_clipModel->index(0, 0, m_clipModel->index(0, 0, QModelIndex()))), 0);
+    QCOMPARE(m_clipModel->rowCount(m_clipModel->index(0, 0, QModelIndex())), 0);
 
     m_clipModel->insertClip(2000, 3000);
 
     QCOMPARE(m_clipModel->rowCount(), 2);
-    QCOMPARE(m_clipModel->rowCount(m_clipModel->index(1, 0, QModelIndex())), 1);
-    QCOMPARE(m_clipModel->rowCount(m_clipModel->index(0, 0, m_clipModel->index(0, 0, QModelIndex()))), 0);
-
-    QEventLoop loop;
-    loop.exec();
+    QCOMPARE(m_clipModel->rowCount(m_clipModel->index(1, 0, QModelIndex())), 0);
 
     delete m_clipModel;
 }

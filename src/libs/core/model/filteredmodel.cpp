@@ -29,32 +29,32 @@ ClipListModel::ClipListModel() {}
 
 namespace
 {
-    // Maps a flat ClipListModel row to the ClipInfo it belongs to and the
-    // index of the range inside that clip.
-    struct RowMapping
-    {
-        ClipInfo* info= nullptr;
-        int rangeIndex= 0;
-    };
+// Maps a flat ClipListModel row to the ClipInfo it belongs to and the
+// index of the range inside that clip.
+struct RowMapping
+{
+    ClipInfo* info= nullptr;
+    int rangeIndex= 0;
+};
 
-    RowMapping resolveRow(const std::vector<std::unique_ptr<ClipInfo>>& infos, int row)
+RowMapping resolveRow(const std::vector<std::unique_ptr<ClipInfo>>& infos, int row)
+{
+    RowMapping m;
+    int acc= 0;
+    for(auto const& info : infos)
     {
-        RowMapping m;
-        int acc= 0;
-        for(auto const& info : infos)
+        auto size= info->ranges()->rowCount();
+        if(row < acc + size)
         {
-            auto size= info->ranges()->rowCount();
-            if(row < acc + size)
-            {
-                m.info= info.get();
-                m.rangeIndex= row - acc;
-                break;
-            }
-            acc+= size;
+            m.info= info.get();
+            m.rangeIndex= row - acc;
+            break;
         }
-        return m;
+        acc+= size;
     }
+    return m;
 }
+} // namespace
 
 QVariant ClipListModel::data(const QModelIndex& index, int role) const
 {
@@ -78,6 +78,9 @@ QVariant ClipListModel::data(const QModelIndex& index, int role) const
         break;
     case labelRole:
         res= mapping.info->label();
+        break;
+    case ClipInfoRole:
+        res= QVariant::fromValue(mapping.info);
         break;
     }
 
@@ -132,7 +135,11 @@ int ClipListModel::rowCount(const QModelIndex& parent) const
 
 QHash<int, QByteArray> ClipListModel::roleNames() const
 {
-    return {{beginRole, "begin"}, {endRole, "end"}, {colorRole, "clipColor"}, {labelRole, "label"}};
+    return {{beginRole, "begin"},
+            {endRole, "end"},
+            {colorRole, "clipColor"},
+            {labelRole, "label"},
+            {ClipInfoRole, "clipInfo"}};
 }
 
 ClipModel* ClipListModel::sourceModel() const

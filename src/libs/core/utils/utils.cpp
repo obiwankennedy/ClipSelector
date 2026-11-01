@@ -6,11 +6,13 @@
 
 namespace Utils
 {
-QByteArray model2Json(const QString& file, const ClipModel* model)
+QByteArray model2Json(const QString& file, const ClipModel* model, const QString& projectType,
+                      const VideoEffectModel* effects)
 {
     auto const& data= model->allData();
     QJsonObject root;
     root["video"]= file;
+    root["projectType"]= projectType;
     QJsonArray infoArray;
 
     for(auto const& info : data)
@@ -35,6 +37,22 @@ QByteArray model2Json(const QString& file, const ClipModel* model)
         infoArray.append(obj);
     }
     root["clips"]= infoArray;
+
+    if(effects)
+    {
+        QJsonArray effectsArray;
+        for(auto const& e : effects->allEffects())
+        {
+            QJsonObject obj;
+            obj["type"]= static_cast<int>(e->type());
+            obj["begin"]= e->begin();
+            obj["end"]= e->end();
+            e->saveData(obj);
+            effectsArray.append(obj);
+        }
+        root["effects"]= effectsArray;
+    }
+
     QJsonDocument doc;
     doc.setObject(root);
     return doc.toJson();
@@ -52,10 +70,16 @@ void readJson(const QString& file, MainController* ctrl)
     QJsonDocument doc= QJsonDocument::fromJson(byte);
     auto obj= doc.object();
 
-    ctrl->setVideoFilePath(obj["video"].toString());
+    auto videoCtrl= ctrl->videoCtrl();
+    auto projectCtrl= ctrl->projectCtrl();
+
+    projectCtrl->setVideoFilePath(obj["video"].toString());
+
+    // Restore the project type stored in the file (default: music clip).
+    ctrl->projectCtrl()->setProjectType(ProjectController::projectTypeFromString(obj["projectType"].toString()));
 
     auto clips= obj["clips"].toArray();
-    auto model= ctrl->clipModel();
+    auto model= videoCtrl->clipModel();
 
     QList<ClipInfo*> infos;
     for(auto const& clipref : std::as_const(clips))
@@ -79,6 +103,25 @@ void readJson(const QString& file, MainController* ctrl)
         infos.append(clipInfo);
     }
     model->reset(infos);
+
+    // Restore the timeline effects (tutorial mode).
+    auto effectsModel= ctrl->tutoCtrl()->effects();
+    QList<VideoTimedEvent*> effectInfos;
+    for(auto const& ref : obj["effects"].toArray())
+    {
+        auto json= ref.toObject();
+        auto type= static_cast<VideoTimedEvent::EventType>(json["type"].toInt());
+        auto start= static_cast<qint64>(json["begin"].toDouble());
+        auto end= static_cast<qint64>(json["end"].toDouble());
+        auto* node= VideoEffectModel::createEvent(type);
+        if(!node)
+            continue;
+        node->setBegin(start);
+        node->setEnd(end);
+        node->readData(json);
+        effectInfos.append(node);
+    }
+    effectsModel->reset(effectInfos);
 }
 
 void readAudioList(const QString& filename, AudioFileModel* model)

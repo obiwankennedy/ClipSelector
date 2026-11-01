@@ -18,7 +18,8 @@ public:
         beginRole= Qt::UserRole + 1,
         endRole,
         colorRole,
-        labelRole
+        labelRole,
+        ClipInfoRole
     };
     ClipListModel();
 

@@ -10,6 +10,7 @@
 class ClipInfo : public QObject
 {
     Q_OBJECT
+    QML_ELEMENT
     Q_PROPERTY(RangeModel* ranges READ ranges CONSTANT)
     Q_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged FINAL)
     Q_PROPERTY(QColor color READ color WRITE setColor NOTIFY colorChanged FINAL)
@@ -17,6 +18,7 @@ class ClipInfo : public QObject
     Q_PROPERTY(QString label READ label WRITE setLabel NOTIFY labelChanged FINAL)
     Q_PROPERTY(qint64 offset READ offset WRITE setOffset NOTIFY offsetChanged FINAL)
     Q_PROPERTY(int duration READ duration NOTIFY durationChanged FINAL)
+    Q_PROPERTY(bool selected READ selected WRITE setSelected NOTIFY selectedChanged FINAL)
 public:
     explicit ClipInfo(QObject* parent= nullptr);
     ~ClipInfo();
@@ -41,6 +43,9 @@ public:
     void addRange(quint64 b, quint64 e);
 
     int duration() const;
+    bool selected() const;
+    void setSelected(bool newSelected);
+
 signals:
     void nameChanged();
     void offsetChanged();
@@ -48,6 +53,8 @@ signals:
     void colorChanged();
     void musicChanged();
     void durationChanged();
+    void selectedChanged();
+    void rangeAdded();
 
 private:
     QString m_name;
@@ -56,6 +63,7 @@ private:
     QString m_music;
     qint64 m_offset;
     QString m_label;
+    bool m_selected{false};
 };
 
 class ClipModel : public QAbstractListModel
@@ -71,7 +79,9 @@ public:
         Color,
         Music,
         Offset,
-        RangeModelRole
+        RangeModelRole,
+        Selected,
+        ClipInfoRole
     };
     Q_ENUM(DataRole)
     ClipModel();
@@ -90,6 +100,7 @@ public slots:
     void rangeIntoCurrentClip(quint64 b, quint64 e);
     void setTitle(int i, const QString& title);
     void reset(const QList<ClipInfo*>& info);
+    void clearSelection();
 
 private:
     std::vector<std::unique_ptr<ClipInfo>> m_data;

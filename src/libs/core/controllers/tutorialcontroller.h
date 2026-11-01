@@ -2,12 +2,12 @@
 #define TUTORIALCONTROLLER_H
 
 #include <QObject>
+#include <QPointer>
 #include <QQueue>
-#include <QHash>
 #include <QUrl>
 
 #include "ttsengine.h"
-#include "tutorialcomment.h"
+#include "videoeffect.h"
 #include "videorenderer.h"
 
 class QSettings;
@@ -18,8 +18,8 @@ class TutorialController : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
-    QML_SINGLETON
-    Q_PROPERTY(TutorialCommentModel* comments READ comments CONSTANT)
+    // clang-format off
+    Q_PROPERTY(VideoEffectModel* effects READ effects CONSTANT)
     Q_PROPERTY(QString videoFilePath READ videoFilePath WRITE setVideoFilePath NOTIFY videoFilePathChanged FINAL)
     Q_PROPERTY(QString projectFilePath READ projectFilePath WRITE setProjectFilePath NOTIFY projectFilePathChanged FINAL)
     Q_PROPERTY(int stage READ stage NOTIFY stageChanged FINAL)
@@ -36,6 +36,7 @@ class TutorialController : public QObject
     Q_PROPERTY(TtsEngine* ttsEngine READ ttsEngine CONSTANT)
     Q_PROPERTY(VideoRenderer* renderer READ renderer CONSTANT)
     Q_PROPERTY(qint64 currentPositionMs READ currentPositionMs WRITE setCurrentPositionMs NOTIFY currentPositionMsChanged FINAL)
+    // clang-format on
 public:
     enum Stage
     {
@@ -50,7 +51,7 @@ public:
     explicit TutorialController(QObject* parent= nullptr);
     ~TutorialController();
 
-    TutorialCommentModel* comments() const;
+    VideoEffectModel* effects() const;
     TtsEngine* ttsEngine() const;
     VideoRenderer* renderer() const;
 
@@ -84,11 +85,7 @@ public:
     qint64 currentPositionMs() const;
     void setCurrentPositionMs(qint64 positionMs);
 
-    // --- Comment operations ---
-    // Add a comment at the current video position (or an explicit time).
-    QString addComment(const QString& text, qint64 startTimeMs= -1);
-    QString addCommentAtCurrentPosition(const QString& text);
-    void removeComment(const QString& id);
+    void removeEffect(int id);
 
     // --- Workflow ---
     // Generate audio for every comment that is pending/outdated/errored.
@@ -105,6 +102,20 @@ public:
     // Persist/restore TTS settings with the application's QSettings.
     void writeSettings() const;
     void loadSettings();
+
+public slots:
+    void addCommentAtCurrentPosition(qint64 start, qint64 end);
+    // Add an audio comment and set its text (which triggers TTS generation).
+    void addCommentWithText(qint64 start, qint64 end, const QString& text);
+    void addSpeedEffect(qint64 start, qint64 end);
+    void addCutEffect(qint64 start, qint64 end);
+
+    // Regenerate the Piper audio of a single comment (by its stable id):
+    // the old file is deleted and the text is sent through the TTS queue.
+    void regenerateAudio(const QString& commentId);
+    // Delete the generated audio file of a single comment (by its stable id)
+    // and clear the reference. The comment itself (text, position) is kept.
+    void removeAudio(const QString& commentId);
 
 signals:
     void videoFilePathChanged();
@@ -129,11 +140,18 @@ private:
     void setStage(Stage stage);
     void setStatus(const QString& message);
     void setBusy(bool busy);
+    // Pop the next AudioCommentEvent from the queue and start its TTS
+    // generation (the TtsEngine is single-process, one generation at a time).
     void processNextInQueue();
+    // Connect the textChanged signal of every AudioCommentEvent to the TTS
+    // queue. Idempotent (UniqueConnection); re-run when new rows appear.
+    void connectEvents();
     // Resolve the project-relative working directory for generated assets.
     QString audioDirFor(const QString& commentId) const;
+    // Find an audio comment by its stable id (nullptr when absent).
+    AudioCommentEvent* findComment(const QString& id) const;
 
-    TutorialCommentModel* m_comments;
+    VideoEffectModel* m_effects;
     TtsEngine* m_tts;
     VideoRenderer* m_renderer;
 
@@ -152,10 +170,10 @@ private:
     QString m_outputVideoPath;
     qint64 m_currentPositionMs{0};
 
-    // Queue of comment ids awaiting audio generation.
-    QQueue<QString> m_audioQueue;
-    // Map comment id -> the text that was queued (to correlate the async result).
-    QHash<QString, QString> m_pendingText;
+    // Queue of comments awaiting audio generation.
+    QQueue<QPointer<AudioCommentEvent>> m_audioQueue;
+    // The comment whose TTS generation is currently in flight.
+    QPointer<AudioCommentEvent> m_generatingEvent;
 };
 
 #endif // TUTORIALCONTROLLER_H

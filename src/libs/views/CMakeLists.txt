@@ -1,22 +1,12 @@
-# "Views" QML module.
-#
-# Owns QML type registration for the QML_ELEMENT core classes (the .cpp
-# implementations come from the corelib STATIC library, linked in below). The QML files live in ./qml; Main.qml lives in ../../bin
-# and is registered here (by absolute path) so the executable's
-# loadFromModule("Views", "Main") keeps working.
-#
-# NOTE: if you add a C++ class deriving from QQuickItem in ./component, add
-# its .h/.cpp to the SOURCES list below so it is moc'd and (optionally)
-# registered with QML_ELEMENT here.
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Qml Multimedia)
 
-# Main.qml lives in an "extra" directory (bin/) relative to this module; the
-# generated qmldir registers it explicitly, so acknowledge QTP0004.
 qt_policy(SET QTP0004 NEW)
 
-# Main.qml lives outside the module directory; Qt requires a resource alias for
-# absolute-path QML files so it is reachable as "Main.qml" in the resource tree.
-set_source_files_properties(${CMAKE_SOURCE_DIR}/src/bin/Main.qml
-    PROPERTIES QT_RESOURCE_ALIAS "Main.qml")
+set(ASSET_ROOT "../../../assets")
+
+qt_standard_project_setup(REQUIRES 6.11)
+
+qt_policy(SET QTP0001 NEW)
 
 qt_add_qml_module(views
     URI Views
@@ -30,12 +20,47 @@ qt_add_qml_module(views
         qml/OffsetSelector.qml
         qml/SettingsContent.qml
         qml/TutorialView.qml
-        QML_FILES qml/TimeLine.qml
-        QML_FILES qml/EditToolBar.qml
-        QML_FILES qml/EditorContent.qml
+        qml/TimeLinePanel.qml
+        qml/EffectSidePanel.qml
+        qml/EditToolBar.qml
+        qml/TopToolBar.qml
+        qml/EditorContent.qml
+    RESOURCES
+        ${ASSET_ROOT}/icons/add.svg
+        ${ASSET_ROOT}/icons/clock.svg
+        ${ASSET_ROOT}/icons/cutter.svg
+        ${ASSET_ROOT}/icons/fast-forward.svg
+        ${ASSET_ROOT}/icons/home.svg
+        ${ASSET_ROOT}/icons/music.svg
+        ${ASSET_ROOT}/icons/next.svg
+        ${ASSET_ROOT}/icons/padlock.svg
+        ${ASSET_ROOT}/icons/pause.svg
+        ${ASSET_ROOT}/icons/play.svg
+        ${ASSET_ROOT}/icons/record.svg
+        ${ASSET_ROOT}/icons/refresh.svg
+        ${ASSET_ROOT}/icons/remove.svg
+        ${ASSET_ROOT}/icons/render.svg
+        ${ASSET_ROOT}/icons/settings.svg
+        ${ASSET_ROOT}/icons/shutdown.svg
+        ${ASSET_ROOT}/icons/speaker.svg
+        ${ASSET_ROOT}/icons/stop.svg
+        ${ASSET_ROOT}/icons/highlighter.svg
+        ${ASSET_ROOT}/icons/highlighter2.svg
+        SOURCES
+        src/timelinetokenbase.h
+        src/timelinetokenbase.cpp
+        src/timelinetoken.h
+        src/timelinetoken.cpp
+        src/timelineeffecttoken.h
+        src/timelineeffecttoken.cpp
+            node/timelinenode.h
+            node/timelinenode.cpp
+            QML_FILES qml/TimeLineBackGround.qml
 )
 
-# Pull in the compiled implementations of the core classes (and their moc).
-target_link_libraries(views
-    PUBLIC Core
+target_link_libraries(views PRIVATE Core Qt6::Quick Qt6::QuickControls2 Qt6::Qml Qt6::Multimedia)
+
+target_include_directories(views PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/node
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
 )

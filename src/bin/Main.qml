@@ -3,31 +3,49 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtMultimedia
 import QtQuick.Dialogs
+import QtCore
 import Views
+import Core
+
 
 ApplicationWindow {
-    width: 640
-    height: 700
+    id: root
+    width: 1020
+    height: 860
     visible: true
-    title: qsTr("ClipSelector")
+    title: MainController.projectCtrl.videoFilePath ? qsTr("%1 - ClipSelector").arg(MainController.projectCtrl.videoFilePath) : qsTr("ClipSelector")
 
     onClosing: {
+        if(MainController.projectCtrl.projectFilePath)
+            MainController.saveModel(MainController.projectCtrl.projectFilePath)
         MainController.writeSettings()
-        TutorialController.writeSettings()
+    }
+
+    function openFile(path) {
+        console.log("Open file:",path)
+        if(path.endsWith("json"))
+        {
+            MainController.openProject(path)
+        }
+        else
+        {
+            MainController.projectCtrl.openVideo(path)
+        }
+    }
+
+    // FileDialog reports its selection as a url; normalize it to a plain
+    // local path.
+    function localPath(u) {
+        var s = u.toString()
+        if (s.startsWith("file://"))
+            s = s.slice(7)
+        return s
     }
 
     FileDialog {
         id: open
         currentFolder: StandardPaths.standardLocations(StandardPaths.MoviesLocation)[0]
-        onAccepted: {
-            if(open.currentFile.toString().endsWith("json"))
-            {
-                MainController.projectFilePath = open.currentFile
-                MainController.openJson(MainController.projectFilePath)
-            }
-            else
-                MainController.videoFilePath = open.currentFile
-        }
+        onAccepted: openFile(localPath(open.selectedFile))
     }
 
     Timer {
@@ -35,8 +53,8 @@ ApplicationWindow {
         repeat: true
         interval: 1000*60*10//10mins
         onTriggered: {
-            if(MainController.projectFilePath && !MainController.busy)
-                MainController.saveModel(save.projectFilePath)
+            if(MainController.projectCtrl.projectFilePath && !MainController.busy)
+                MainController.saveModel(MainController.projectCtrl.projectFilePath)
         }
     }
 
@@ -47,8 +65,8 @@ ApplicationWindow {
         fileMode: FileDialog.SaveFile
         nameFilters: ["Project file (*.json)"]
         onAccepted: {
-            MainController.projectFilePath = save.currentFile
-            MainController.saveModel(MainController.projectFilePath)
+            MainController.projectCtrl.projectFilePath = localPath(save.selectedFile)
+            MainController.saveModel(MainController.projectCtrl.projectFilePath)
             timer.start()
         }
     }
@@ -66,7 +84,7 @@ ApplicationWindow {
                 text: qsTr("VideFile:")
             }
             Label {
-                text: MainController.videoFilePath
+                text: MainController.projectCtrl.videoFilePath
             }
 
             Switch {
@@ -108,6 +126,7 @@ ApplicationWindow {
 
     menuBar: MenuBar {
         Menu {
+            id: menuFile
             title: qsTr("File")
             Action {
                 text: qsTr("Open")
@@ -117,8 +136,8 @@ ApplicationWindow {
             Action {
                 text: qsTr("Save")
                 onTriggered: {
-                    if(MainController.projectFilePath)
-                        MainController.saveModel(MainController.projectFilePath)
+                    if(MainController.projectCtrl.projectFilePath)
+                        MainController.saveModel(MainController.projectCtrl.projectFilePath)
                     else
                         save.open()
                 }
@@ -126,6 +145,62 @@ ApplicationWindow {
             Action {
                 text: qsTr("Save As")
                 onTriggered: save.open()
+            }
+            Menu {
+                title: qsTr("Recent")
+                Menu {
+                    id: recentVideosMenu
+                    title: qsTr("Videos")
+                    Repeater {
+                        model: MainController.projectCtrl.recentVideos
+                        MenuItem {
+                            required property string filePath
+                            required property string fileName
+
+                            text: fileName
+                            onTriggered: {
+                                openFile(filePath)
+                                menuFile.close()
+
+                            }
+                            /*Timer {
+                                running: true
+                                repeat: true
+                                onTriggered: console.log("Textmenu: "+text)
+                            }*/
+                        }
+                        onItemAdded: (pos, item) => {
+                         recentVideosMenu.insertItem(pos,item)
+                     }
+                    }
+                    MenuItem {
+                        visible: MainController.projectCtrl.recentVideos.count > 0
+                        text: qsTr("Clear")
+                        onTriggered: MainController.projectCtrl.clearRecentVideos()
+                    }
+                }
+                Menu {
+                    id: recentProjectsMenu
+                    title: qsTr("Projects")
+                    Repeater {
+                        model: MainController.projectCtrl.recentProjects
+                        MenuItem {
+                            text: display
+                            onTriggered: {
+                                openFile(path)
+                                menuFile.close()
+                            }
+                        }
+                        onItemAdded: (pos, item) => {
+                            recentProjectsMenu.insertItem(pos,item)
+                        }
+                    }
+                    MenuItem {
+                        visible: MainController.projectCtrl.recentProjects.count > 0
+                        text: qsTr("Clear")
+                        onTriggered: MainController.projectCtrl.clearRecentProjects()
+                    }
+                }
             }
             MenuSeparator{
 
@@ -144,13 +219,20 @@ ApplicationWindow {
             }
             Action {
                 text: qsTr("Tutorial")
-                checked: MainController.appMode === MainController.Tutorial
-                onTriggered: MainController.appMode = MainController.Tutorial
+                checked: MainController.projectCtrl.projectType === MainController.projectCtrl.Tutorial
+                onTriggered: MainController.projectCtrl.projectType = MainController.projectCtrl.Tutorial
             }
         }
     }
 
-    EditorContent {
+    ColumnLayout {
         anchors.fill: parent
+        TopToolBar {
+            Layout.fillWidth: true
+        }
+        EditorContent {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+        }
     }
 }

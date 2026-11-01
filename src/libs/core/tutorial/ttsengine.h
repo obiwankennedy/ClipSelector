@@ -8,6 +8,11 @@
 class TtsEngine : public QObject
 {
     Q_OBJECT
+    // clang-format off
+    Q_PROPERTY(QString scriptPath READ scriptPath WRITE setScriptPath NOTIFY scriptPathChanged)
+    Q_PROPERTY(QString pythonPath READ pythonPath WRITE setPythonPath NOTIFY pythonPathChanged)
+    Q_PROPERTY(QString modelDirectory READ modelDirectory WRITE setModelDirectory NOTIFY modelDirectoryChanged)
+    // clang-format on
 public:
     // Describes an installed Piper voice.
     struct Voice
@@ -29,6 +34,10 @@ public:
     explicit TtsEngine(QObject* parent= nullptr);
 
     // --- Piper environment configuration ---
+    // The script is the single source of truth: the voice (language) models
+    // are looked up in the directory containing the script, and the python
+    // interpreter is the .venv in that same directory. Changing the script
+    // path re-derives the other two; they can still be overridden explicitly.
     QString scriptPath() const;
     void setScriptPath(const QString& script);
     QString pythonPath() const;
@@ -77,6 +86,9 @@ public:
     static QString escapeFilterPath(const QString& path);
 
 signals:
+    void scriptPathChanged();
+    void pythonPathChanged();
+    void modelDirectoryChanged();
     void generationStarted(const QString& text);
     void generationFinished(const QString& text, const GenerationResult& result);
     void generationError(const QString& text, const QString& error);

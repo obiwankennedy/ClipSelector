@@ -12,17 +12,6 @@ QColor generateColor()
     return QColor(redAndBlueDist(mt), greenDist(mt), redAndBlueDist(mt));
 }
 
-/*int computeDuration(const RangeInfo& info)
-{
-    return (info.end - info.begin) / 1000;
-}
-
-int cumulateDuration(const std::vector<RangeInfo>& ranges)
-{
-    return std::accumulate(std::begin(ranges), std::end(ranges), 0,
-                           [](int a, const RangeInfo& b) { return a + computeDuration(b); });
-}*/
-
 ClipModel::ClipModel() {}
 
 QVariant ClipModel::data(const QModelIndex& index, int role) const
@@ -61,11 +50,16 @@ QVariant ClipModel::data(const QModelIndex& index, int role) const
     case Color:
         res= clip->color();
         break;
+    case Selected:
+        res= clip->selected();
+        break;
+    case ClipInfoRole:
+        res= QVariant::fromValue(clip);
+        break;
     case Offset:
         res= clip->offset();
         break;
     }
-    // qDebug() << "data index:" << index << role << res;
     return res;
 }
 
@@ -87,7 +81,6 @@ bool ClipModel::setData(const QModelIndex& index, const QVariant& value, int rol
     int row= index.row();
 
     auto clip= m_data[row].get();
-    // auto ranges= clip->ranges();
 
     switch(role)
     {
@@ -106,6 +99,9 @@ bool ClipModel::setData(const QModelIndex& index, const QVariant& value, int rol
     case Offset:
         clip->setOffset(value.toLongLong());
         break;
+    case Selected:
+        clip->setSelected(value.toBool());
+        break;
     case Duration:
         break;
     }
@@ -119,55 +115,13 @@ int ClipModel::rowCount(const QModelIndex& parent) const
         return 0;
 
     return m_data.size();
-
-    /* auto res= 0;
-     auto id= static_cast<TreeId*>(parent.internalPointer());
-     if(!parent.isValid())
-         res= m_data.size();
-     else if(id)
-     {
-         if(!id->range)
-         {
-             auto clip= m_data.at(id->row);
-             res= clip.ranges.size();
-         }
-     }
-     else if(id == 0)
-     {
-         qDebug() << "count title";
-         auto clip= m_data.at(id);
-         res= clip.ranges.size();
-     }
-     qDebug() << "parent" << parent << "rowCount" << res << id;*/
-    // return res;
 }
-
-/*QModelIndex ClipModel::index(int row, int column, const QModelIndex& parent) const
-{
-    if(!parent.isValid())
-        return createIndex(row, column, static_cast<quintptr>(0));
-
-    // auto gParent= parent.parent();
-    // if(gParent.isValid())
-    // return createIndex(row, column, static_cast<quintptr>(parent.row() + 1));
-    // else
-    return createIndex(row, column, static_cast<quintptr>(parent.row() + 1));
-}
-
-QModelIndex ClipModel::parent(const QModelIndex& child) const
-{
-    auto id= static_cast<int>(child.internalId() - 1);
-
-    if(id < 0)
-        return QModelIndex();
-
-    return createIndex(id, 0, static_cast<quintptr>(0));
-}*/
 
 QHash<int, QByteArray> ClipModel::roleNames() const
 {
-    return {{Duration, "duration"}, {Color, "clipColor"},       {0, "display"},  {Music, "music"},
-            {Offset, "offset"},     {RangeModelRole, "ranges"}, {Label, "label"}};
+    return {{Duration, "duration"}, {Color, "clipColor"},       {0, "display"},
+            {Music, "music"},       {Offset, "offset"},         {RangeModelRole, "ranges"},
+            {Label, "label"},       {ClipInfoRole, "clipInfo"}, {Selected, "selected"}};
 }
 
 const std::vector<std::unique_ptr<ClipInfo>>& ClipModel::allData() const
@@ -202,11 +156,14 @@ void ClipModel::insertClip(quint64 b, quint64 e)
 
 void ClipModel::rangeIntoCurrentClip(quint64 b, quint64 e)
 {
+    qDebug() << "rangeInto Current clip" << m_data.empty() << b << e;
     if(m_data.empty())
         return;
 
-    auto clip= m_data[m_data.size() - 1].get();
+    auto idx= m_data.size() - 1;
+    auto clip= m_data[idx].get();
     clip->addRange(b, e);
+    emit dataChanged(index(idx, 0), index(idx, 0), {RangeModelRole});
 }
 
 void ClipModel::insertClip(ClipInfo* info)
@@ -224,16 +181,24 @@ void ClipModel::setTitle(int i, const QString& title)
     emit dataChanged(index(i, 0), index(i, 0), {Label});
 }
 
-void ClipModel::reset(const QList<ClipInfo*>& infos)
+void ClipModel::reset(const QList<ClipInfo*>& info)
 {
     beginResetModel();
     m_data.clear();
-    for(auto const& info : infos)
+    for(auto const& info : info)
     {
         std::unique_ptr<ClipInfo> p(info);
         m_data.push_back(std::move(p));
     }
     endResetModel();
+}
+
+void ClipModel::clearSelection()
+{
+    for(auto const& p : m_data)
+    {
+        p->setSelected(false);
+    }
 }
 
 ClipInfo::ClipInfo(QObject* parent) : m_ranges{new RangeModel}
@@ -319,9 +284,23 @@ void ClipInfo::setMusic(const QString& newMusic)
 void ClipInfo::addRange(quint64 b, quint64 e)
 {
     m_ranges->addRange(b, e);
+    emit rangeAdded();
 }
 
 int ClipInfo::duration() const
 {
     return m_ranges->duration();
+}
+
+bool ClipInfo::selected() const
+{
+    return m_selected;
+}
+
+void ClipInfo::setSelected(bool newSelected)
+{
+    if(m_selected == newSelected)
+        return;
+    m_selected= newSelected;
+    emit selectedChanged();
 }

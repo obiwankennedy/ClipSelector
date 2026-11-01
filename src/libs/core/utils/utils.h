@@ -6,10 +6,14 @@
 #include "maincontroller.h"
 #include <QJsonDocument>
 
+class VideoEffectModel;
+
 namespace Utils
 {
 
-QByteArray model2Json(const QString& name, const ClipModel* model);
+QByteArray model2Json(const QString& name, const ClipModel* model,
+                      const QString& projectType= "musicclip",
+                      const VideoEffectModel* effects= nullptr);
 void readJson(const QString& file, MainController* ctrl);
 void readAudioList(const QString& filename, AudioFileModel* model);
 quint64 closiestPositionInClip(const QList<std::pair<quint64, quint64> > &ranges, quint64 pos, bool* ok);

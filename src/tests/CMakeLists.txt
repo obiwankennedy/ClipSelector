@@ -3,7 +3,9 @@
 # tst_model compiles clipmodel + rangemodel directly (as before) instead of
 # linking corelib, so it does not require taglib / audiorw to build.
 
-find_package(Qt6 REQUIRED COMPONENTS Gui Test Quick Widgets)
+set(CMAKE_AUTOMOC ON)
+
+find_package(Qt6 REQUIRED COMPONENTS Gui Test Quick Widgets Multimedia)
 
 qt_add_executable(tst_model
     tst_model.cpp
@@ -25,7 +27,7 @@ target_include_directories(tst_model PRIVATE
 )
 
 target_link_libraries(tst_model
-    PRIVATE Qt6::Test Qt6::Gui Qt6::Quick Qt6::Widgets corelib
+    PRIVATE Qt6::Test Qt6::Gui Qt6::Quick Qt6::Widgets Core
 )
 
 # tst_tutorial exercises the TUTORIAL mode logic (comments, SRT, TTS command
@@ -48,10 +50,10 @@ target_include_directories(tst_tutorial PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../libs/core/model
     ${CMAKE_CURRENT_SOURCE_DIR}/../libs/core/data
     ${CMAKE_CURRENT_SOURCE_DIR}/../libs/core/utils
-
+    ${CMAKE_CURRENT_SOURCE_DIR}/../libs/views/src
 )
 
 target_link_libraries(tst_tutorial
-    PRIVATE views corelib Qt6::Test Qt6::Quick
+    PRIVATE views Core Qt6::Test Qt6::Quick Qt6::Multimedia
 )
 

@@ -15,20 +15,36 @@
 
 TutorialController::TutorialController(QObject* parent)
     : QObject(parent)
-    , m_comments(new TutorialCommentModel(this))
+    , m_effects(new VideoEffectModel(this))
     , m_tts(new TtsEngine(this))
     , m_renderer(new VideoRenderer(this))
 {
-    connect(m_tts, &TtsEngine::generationFinished, this,
-            &TutorialController::onGenerationFinished);
+    connect(m_tts, &TtsEngine::generationFinished, this, &TutorialController::onGenerationFinished);
+    // Keep the TTS triggers in sync with the contents of the effect model.
+    connect(m_effects, &VideoEffectModel::rowsInserted, this, [this] { connectEvents(); });
+    connect(m_effects, &VideoEffectModel::modelReset, this, [this] { connectEvents(); });
+    // When the Piper environment changes (script path re-derives it, or the
+    // model directory is set explicitly), re-expose the available languages
+    // and voices and re-validate the current voice against them.
+    const auto refreshVoices= [this] {
+        const auto voices= m_tts->voicesForLanguage(m_language);
+        if(voices.isEmpty())
+            setVoice(QString());
+        else if(!voices.contains(m_voice))
+            setVoice(voices.first());
+        emit languagesChanged();
+        emit voicesChanged();
+    };
+    connect(m_tts, &TtsEngine::scriptPathChanged, this, refreshVoices);
+    connect(m_tts, &TtsEngine::modelDirectoryChanged, this, refreshVoices);
     loadSettings();
 }
 
-TutorialController::~TutorialController() = default;
+TutorialController::~TutorialController()= default;
 
-TutorialCommentModel* TutorialController::comments() const
+VideoEffectModel* TutorialController::effects() const
 {
-    return m_comments;
+    return m_effects;
 }
 
 TtsEngine* TutorialController::ttsEngine() const
@@ -162,40 +178,95 @@ QStringList TutorialController::voices() const
     return m_tts->voicesForLanguage(m_language);
 }
 
-// --- Comment operations ---
-
-QString TutorialController::addComment(const QString& text, qint64 startTimeMs)
+void TutorialController::addCommentAtCurrentPosition(qint64 start, qint64 end)
 {
-    if(startTimeMs < 0)
-        startTimeMs= m_currentPositionMs;
-    return m_comments->addComment(text, startTimeMs, m_language, m_voice);
+    m_effects->addEffect(VideoTimedEvent::EventType::AUDIOCOMMENT, start, end);
 }
 
-QString TutorialController::addCommentAtCurrentPosition(const QString& text)
+void TutorialController::addCommentWithText(qint64 start, qint64 end, const QString& text)
 {
-    return addComment(text, m_currentPositionMs);
+    m_effects->addEffect(VideoTimedEvent::EventType::AUDIOCOMMENT, start, end);
+    auto* comment= qobject_cast<AudioCommentEvent*>(m_effects->effectAt(m_effects->rowCount() - 1));
+    if(comment)
+        comment->setText(text);
 }
 
-void TutorialController::removeComment(const QString& id)
+void TutorialController::addSpeedEffect(qint64 start, qint64 end)
 {
-    const int row= m_comments->indexOfId(id);
-    if(row < 0)
+    m_effects->addEffect(VideoTimedEvent::EventType::SPEEDUPEVENT, start, end);
+}
+
+void TutorialController::addCutEffect(qint64 start, qint64 end)
+{
+    m_effects->addEffect(VideoTimedEvent::EventType::CUTEVENT, start, end);
+}
+
+void TutorialController::removeEffect(int id)
+{
+    m_effects->removeEffect(id);
+}
+
+AudioCommentEvent* TutorialController::findComment(const QString& id) const
+{
+    for(const auto& e : m_effects->allEffects())
+    {
+        if(auto* c= qobject_cast<AudioCommentEvent*>(e.get()))
+        {
+            if(c->id() == id)
+                return c;
+        }
+    }
+    return nullptr;
+}
+
+void TutorialController::regenerateAudio(const QString& commentId)
+{
+    auto* comment= findComment(commentId);
+    if(!comment)
+        return;
+    if(m_busy)
+    {
+        setStatus("Already generating audio.");
+        return;
+    }
+
+    QString details;
+    if(!m_tts->isAvailable(&details))
+    {
+        setStatus("Piper is not available:\n" + details);
+        emit workflowFinished(false, "Piper is not available: " + details);
+        return;
+    }
+
+    // Drop the old file so the outdated audio is not played while the new
+    // one is being generated.
+    if(!comment->audioFile().isEmpty())
+    {
+        if(QFileInfo::exists(comment->audioFile()))
+            QFile::remove(comment->audioFile());
+        comment->setAudioFile(QString());
+    }
+
+    // Reuse the generation queue for this single comment.
+    m_audioQueue= QQueue<QPointer<AudioCommentEvent>>();
+    m_audioQueue.enqueue(comment);
+    m_total= 1;
+    m_current= 0;
+    emit progressChanged();
+    processNextInQueue();
+}
+
+void TutorialController::removeAudio(const QString& commentId)
+{
+    auto* comment= findComment(commentId);
+    if(!comment || comment->audioFile().isEmpty())
         return;
 
-    // Clean up the comment's generated audio only when it is safe: the file is
-    // inside our project working directory (never touch source media).
-    const auto* c= m_comments->commentAt(row);
-    const QString audio= c->audioFile();
-    m_comments->removeComment(row);
-
-    if(!audio.isEmpty())
-    {
-        const QFileInfo fi(audio);
-        const QString workDir= workingDirectory();
-        if(fi.exists() && workDir.isEmpty() == false
-            && audio.startsWith(workDir))
-            QFile::remove(audio);
-    }
+    const QString fileName= QFileInfo(comment->audioFile()).fileName();
+    if(QFileInfo::exists(comment->audioFile()))
+        QFile::remove(comment->audioFile());
+    comment->setAudioFile(QString());
+    setStatus("Audio removed: " + fileName);
 }
 
 QString TutorialController::workingDirectory() const
@@ -208,9 +279,8 @@ QString TutorialController::workingDirectory() const
     else
         base= QDir::homePath();
 
-    const QString projectName= m_projectFilePath.isEmpty()
-        ? "ClipSelectorTutorial"
-        : QFileInfo(m_projectFilePath).completeBaseName();
+    const QString projectName
+        = m_projectFilePath.isEmpty() ? "ClipSelectorTutorial" : QFileInfo(m_projectFilePath).completeBaseName();
 
     return QDir(base).filePath(projectName + ".tutorial");
 }
@@ -219,7 +289,6 @@ QString TutorialController::audioDirFor(const QString& commentId) const
 {
     return QDir(workingDirectory()).filePath("audio/" + commentId);
 }
-
 
 void TutorialController::generateAudio()
 {
@@ -234,20 +303,15 @@ void TutorialController::generateAudio()
         return;
     }
 
-    // Collect comments that need (re)generation: pending, outdated or errored.
-    m_audioQueue= QQueue<QString>();
-    m_pendingText.clear();
-    for(const auto* c : m_comments->allComments())
+    // Collect comments that need (re)generation: they have text but no audio
+    // file yet (e.g. the project was loaded without generated assets).
+    m_audioQueue= QQueue<QPointer<AudioCommentEvent>>();
+    for(const auto& e : m_effects->allEffects())
     {
-        const int st= c->status();
-        if(st == TutorialComment::Pending
-            || st == TutorialComment::Outdated
-            || st == TutorialComment::Error
-            || c->isStale()
-            || c->audioFile().isEmpty())
+        if(auto* c= qobject_cast<AudioCommentEvent*>(e.get()))
         {
-            m_audioQueue.enqueue(c->id());
-            m_pendingText.insert(c->id(), c->text());
+            if(!c->text().isEmpty() && c->audioFile().isEmpty())
+                m_audioQueue.enqueue(c);
         }
     }
 
@@ -258,8 +322,6 @@ void TutorialController::generateAudio()
         return;
     }
 
-    setBusy(true);
-    setStage(GeneratingAudio);
     m_total= m_audioQueue.size();
     m_current= 0;
     emit progressChanged();
@@ -268,73 +330,113 @@ void TutorialController::generateAudio()
 
 void TutorialController::processNextInQueue()
 {
-    if(m_audioQueue.isEmpty())
+    QPointer<AudioCommentEvent> event;
+    while(!m_audioQueue.isEmpty())
     {
+        event= m_audioQueue.dequeue();
+        if(event)
+            break;
+    }
+
+    if(!event)
+    {
+        // Only report success when a generation was actually in flight; a
+        // Done stage already carries a failure message that must not be
+        // overwritten.
+        if(m_stage == GeneratingAudio)
+        {
+            setStage(Done);
+            setBusy(false);
+            setStatus("Audio generation finished.");
+            emit workflowFinished(true, "Audio generation finished.");
+        }
+        return;
+    }
+
+    if(event->text().isEmpty())
+    {
+        processNextInQueue();
+        return;
+    }
+
+    QString details;
+    if(!m_tts->isAvailable(&details))
+    {
+        setStatus("Piper is not available:\n" + details);
+        // Drain the rest of the queue so the UI is not left busy.
+        m_audioQueue= QQueue<QPointer<AudioCommentEvent>>();
+        m_generatingEvent.clear();
         setStage(Done);
         setBusy(false);
-        setStatus("Audio generation finished.");
-        emit workflowFinished(true, "Audio generation finished.");
+        emit workflowFinished(false, "Piper is not available: " + details);
         return;
     }
 
-    const QString id= m_audioQueue.head();
-    auto* c= m_comments->commentAt(m_comments->indexOfId(id));
-    if(!c)
-    {
-        m_audioQueue.dequeue();
-        processNextInQueue();
-        return;
-    }
+    m_total= m_audioQueue.size() + 1;
+    ++m_current;
+    setStage(GeneratingAudio);
+    setBusy(true);
+    setStatus(QString("Generating audio (%1/%2): %3").arg(m_current).arg(m_total).arg(event->text().left(40)));
+    emit progressChanged();
 
-    c->setStatus(TutorialComment::Generating);
-    c->setError(QString());
-    m_tts->generateAsync(c->text(), audioDirFor(id), c->language());
+    m_generatingEvent= event;
+    m_tts->ensureDestDir(audioDirFor(event->id()));
+    m_tts->generateAsync(event->text(), audioDirFor(event->id()), m_language);
 }
 
-void TutorialController::onGenerationFinished(const QString& text,
-                                              const TtsEngine::GenerationResult& result)
+void TutorialController::onGenerationFinished(const QString& text, const TtsEngine::GenerationResult& result)
 {
-    // Correlate the async result back to the comment we queued.
-    QString id;
-    for(auto it= m_pendingText.constBegin(); it != m_pendingText.constEnd(); ++it)
-        if(it.value() == text)
+    Q_UNUSED(text);
+    // Correlate the async result back to the comment we started generating.
+    QPointer<AudioCommentEvent> event= m_generatingEvent;
+    m_generatingEvent.clear();
+
+    if(event)
+    {
+        if(result.ok)
         {
-            id= it.key();
-            break;
+            event->setAudioFile(result.audioFile);
+            // Adapt the event duration to the length of the generated audio.
+            event->setEnd(event->begin() + result.durationMs);
         }
-
-    auto* c= id.isEmpty() ? nullptr : m_comments->commentAt(m_comments->indexOfId(id));
-    if(!c)
-    {
-        m_audioQueue.dequeue();
-        ++m_current;
-        emit progressChanged();
-        processNextInQueue();
-        return;
+        else
+        {
+            setStage(Done);
+            setBusy(false);
+            setStatus("Audio generation failed: " + result.error);
+            emit workflowFinished(false, "Audio generation failed: " + result.error);
+        }
     }
 
-    if(result.ok)
-    {
-        c->setAudioFile(result.audioFile);
-        c->setAudioDurationMs(result.durationMs);
-        c->markGenerated();
-    }
-    else
-    {
-        c->setStatus(TutorialComment::Error);
-        c->setError(result.error);
-    }
-
-    m_audioQueue.dequeue();
-    ++m_current;
-    setStatus(QString("Generating audio (%1/%2): %3")
-                  .arg(m_current)
-                  .arg(m_total)
-                  .arg(c->text().left(40)));
-    emit progressChanged();
     processNextInQueue();
 }
 
+void TutorialController::connectEvents()
+{
+    for(const auto& e : m_effects->allEffects())
+    {
+        auto* comment= qobject_cast<AudioCommentEvent*>(e.get());
+        if(!comment)
+            continue;
+        // Idempotent: drop any previous trigger for this comment first.
+        QObject::disconnect(comment, nullptr, this, nullptr);
+        connect(comment, &AudioCommentEvent::textChanged, this,
+                [this, comment]
+                {
+                    if(comment->text().isEmpty())
+                        return;
+                    // Avoid double-queueing the same comment.
+                    for(const auto& queued : std::as_const(m_audioQueue))
+                    {
+                        if(queued == comment)
+                            return;
+                    }
+                    m_audioQueue.enqueue(comment);
+                    if(!m_busy)
+                        processNextInQueue();
+                });
+    }
+}
 
 void TutorialController::setStage(Stage stage)
 {
@@ -362,7 +464,7 @@ void TutorialController::setBusy(bool busy)
 
 void TutorialController::generateSubtitle()
 {
-    if(m_comments->allComments().isEmpty())
+    /*if(m_comments->allComments().isEmpty())
     {
         setStatus("No comments to subtitle.");
         emit workflowFinished(false, "No comments to subtitle.");
@@ -399,9 +501,8 @@ void TutorialController::generateSubtitle()
     emit srtPathChanged();
     setStage(Done);
     setBusy(false);
-    setStatus("Subtitles written to " + m_srtPath
-              + (problems.isEmpty() ? QString() : "\n" + problems.join("\n")));
-    emit workflowFinished(true, "Subtitles generated: " + m_srtPath);
+    setStatus("Subtitles written to " + m_srtPath + (problems.isEmpty() ? QString() : "\n" + problems.join("\n")));
+    emit workflowFinished(true, "Subtitles generated: " + m_srtPath);*/
 }
 
 void TutorialController::renderVideo(bool keepOriginalAudio, bool embedSubtitles)
@@ -423,10 +524,14 @@ void TutorialController::renderVideo(bool keepOriginalAudio, bool embedSubtitles
     if(m_srtPath.isEmpty() || !QFileInfo::exists(m_srtPath))
         generateSubtitle();
     if(m_srtPath.isEmpty())
-        return; // generateSubtitle already reported the failure
+    {
+        setStatus("No subtitles available for rendering.");
+        emit workflowFinished(false, "No subtitles available for rendering.");
+        return;
+    }
 
     // Collect ready narration, in timeline order.
-    QList<VideoRenderer::CommentAudio> audios;
+    /*QList<VideoRenderer::CommentAudio> audios;
     bool missing= false;
     for(const auto* c : m_comments->sortedByTime())
     {
@@ -439,13 +544,12 @@ void TutorialController::renderVideo(bool keepOriginalAudio, bool embedSubtitles
         a.audioFile= c->audioFile();
         a.startMs= c->startTimeMs();
         audios.append(a);
-    }
+    }*/
 
-    if(missing)
+    /*if(missing)
     {
         setStatus("Some comments have no audio. Generate audio before rendering.");
-        emit workflowFinished(false,
-                              "Some comments have no audio. Generate audio before rendering.");
+        emit workflowFinished(false, "Some comments have no audio. Generate audio before rendering.");
         return;
     }
     if(audios.isEmpty())
@@ -453,7 +557,7 @@ void TutorialController::renderVideo(bool keepOriginalAudio, bool embedSubtitles
         setStatus("No narration to render.");
         emit workflowFinished(false, "No narration to render.");
         return;
-    }
+    }*/
 
     m_outputVideoPath= QDir(workingDirectory()).filePath("tutorial_output.mp4");
     emit outputVideoPathChanged();
@@ -469,48 +573,41 @@ void TutorialController::renderVideo(bool keepOriginalAudio, bool embedSubtitles
     setBusy(true);
     setStatus("Rendering final video...");
 
-    connect(m_renderer, &VideoRenderer::renderFinished, this,
-            [this](bool success, const QString& message) {
-                setStage(Done);
-                setBusy(false);
-                setStatus(message);
-                emit workflowFinished(success, message);
-            },
-            Qt::UniqueConnection);
-    m_renderer->renderAsync(opts, audios);
+    connect(
+        m_renderer, &VideoRenderer::renderFinished, this,
+        [this](bool success, const QString& message)
+        {
+            setStage(Done);
+            setBusy(false);
+            setStatus(message);
+            emit workflowFinished(success, message);
+        },
+        Qt::UniqueConnection);
+    // m_renderer->renderAsync(opts, audios);
 }
-
 
 // --- Project persistence ---
 
 void TutorialController::saveProject(const QString& path)
 {
     QJsonObject root;
-    root["appMode"]= "tutorial";
+    root["projectType"]= "tutorial";
     root["video"]= m_videoFilePath;
 
-    QJsonArray comments;
-    for(const auto* c : m_comments->allComments())
+    QJsonArray effects;
+    int i= 0;
+    for(const auto& e : m_effects->allEffects())
     {
         QJsonObject obj;
-        obj["id"]= c->id();
-        obj["text"]= c->text();
-        obj["startTimeMs"]= static_cast<qint64>(c->startTimeMs());
-        obj["audioDurationMs"]= static_cast<qint64>(c->audioDurationMs());
-        obj["language"]= c->language();
-        obj["voice"]= c->voice();
-        obj["status"]= c->status();
-        // Store the audio path relative to the project working directory so
-        // the project stays portable.
-        const QString workDir= workingDirectory();
-        const QString audio= c->audioFile();
-        if(!audio.isEmpty() && !workDir.isEmpty() && audio.startsWith(workDir))
-            obj["audioFile"]= QDir(workDir).relativeFilePath(audio);
-        else
-            obj["audioFile"]= audio;
-        comments.append(obj);
+        obj["id"]= i;
+        obj["type"]= static_cast<int>(e->type());
+        obj["begin"]= e->begin();
+        obj["end"]= e->end();
+        e->saveData(obj);
+        effects.append(obj);
+        ++i;
     }
-    root["comments"]= comments;
+    root["effects"]= effects;
 
     QString filePath= path;
     if(!filePath.endsWith(".json"))
@@ -546,39 +643,24 @@ void TutorialController::loadProject(const QString& path)
     const QString workDir= workingDirectory();
     auto array= obj["comments"].toArray();
 
-    QList<TutorialComment*> infos;
-    for(const auto& ref : array)
+    QList<VideoTimedEvent*> effectInfos;
+    for(const auto& ref : obj["effects"].toArray())
     {
         auto json= ref.toObject();
-        auto c= new TutorialComment(this);
-        c->setText(json["text"].toString());
-        c->setStartTimeMs(static_cast<qint64>(json["startTimeMs"].toDouble()));
-        c->setAudioDurationMs(static_cast<qint64>(json["audioDurationMs"].toDouble()));
-        c->setLanguage(json["language"].toString());
-        c->setVoice(json["voice"].toString());
 
-        QString audio= json["audioFile"].toString();
-        if(!audio.isEmpty() && !audio.startsWith(QDir::homePath())
-            && !audio.startsWith("/"))
-            audio= QDir(workDir).absoluteFilePath(audio);
+        auto type= static_cast<VideoTimedEvent::EventType>(json["type"].toInt());
+        auto start= static_cast<qint64>(json["begin"].toDouble());
+        auto end= static_cast<qint64>(json["end"].toDouble());
+        auto* node= VideoEffectModel::createEvent(type);
+        if(!node)
+            continue;
+        node->setBegin(start);
+        node->setEnd(end);
+        node->readData(json);
 
-        // Detect missing generated audio and flag it for regeneration.
-        if(!audio.isEmpty() && QFileInfo::exists(audio))
-        {
-            c->setAudioFile(audio);
-            c->setStatus(static_cast<int>(json["status"].toInt()));
-            // Re-snapshot the generation source so isStale() works correctly.
-            if(c->status() == TutorialComment::Ready)
-                c->markGenerated();
-        }
-        else
-        {
-            c->setAudioFile(QString());
-            c->setStatus(TutorialComment::Pending);
-        }
-        infos.append(c);
+        effectInfos.append(node);
     }
-    m_comments->reset(infos);
+    m_effects->reset(effectInfos);
 
     m_srtPath= QDir(workDir).filePath("subtitles.srt");
     emit srtPathChanged();
@@ -594,12 +676,9 @@ void TutorialController::loadSettings()
     QSettings settings("rolisteam", "ClipSelector");
     m_language= settings.value("tutorial/language", "fr").toString();
     m_voice= settings.value("tutorial/voice", QString()).toString();
-    m_tts->setScriptPath(settings.value(
-        "tutorial/script", m_tts->scriptPath()).toString());
-    m_tts->setPythonPath(settings.value(
-        "tutorial/python", m_tts->pythonPath()).toString());
-    m_tts->setModelDirectory(settings.value(
-        "tutorial/modeldir", m_tts->modelDirectory()).toString());
+    m_tts->setScriptPath(settings.value("tutorial/script", m_tts->scriptPath()).toString());
+    m_tts->setPythonPath(settings.value("tutorial/python", m_tts->pythonPath()).toString());
+    m_tts->setModelDirectory(settings.value("tutorial/modeldir", m_tts->modelDirectory()).toString());
 
     // If the stored voice is not available for the stored language, fall back
     // to the first compatible voice.
@@ -620,4 +699,3 @@ void TutorialController::writeSettings() const
     settings.setValue("tutorial/python", m_tts->pythonPath());
     settings.setValue("tutorial/modeldir", m_tts->modelDirectory());
 }
-

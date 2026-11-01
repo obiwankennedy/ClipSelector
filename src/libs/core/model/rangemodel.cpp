@@ -45,7 +45,6 @@ QVariant RangeModel::data(const QModelIndex& index, int role) const
 
 bool RangeModel::setData(const QModelIndex& index, const QVariant& value, int role)
 {
-    qDebug() << "setData RangeModel" << index << value << role;
     if(!index.isValid())
         return false;
 

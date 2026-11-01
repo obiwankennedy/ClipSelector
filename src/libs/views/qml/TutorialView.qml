@@ -258,7 +258,9 @@ Item {
                     text: qsTr("Add")
                     onClicked: {
                         if(commentField.text.trim().length > 0)
-                            TutorialController.addCommentAtCurrentPosition(commentField.text)
+                            TutorialController.addCommentWithText(TutorialController.currentPositionMs,
+                                                                  TutorialController.currentPositionMs + 30000,
+                                                                  commentField.text)
                         commentField.text = ""
                         commentDialog.close()
                     }
